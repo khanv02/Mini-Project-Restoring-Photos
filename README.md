@@ -2,7 +2,7 @@
 
 Ứng dụng **xử lý và khôi phục ảnh cũ tự động** thuộc Học phần **Xử lý ảnh**.
 
-Project tập trung vào việc mô phỏng các tình trạng ảnh bị hư hỏng, áp dụng các thuật toán khôi phục ảnh tiêu chuẩn, đánh giá chất lượng kết quả và hỗ trợ xử lý nhiều ảnh tự động thông qua **Batch Processing**.
+Project tập trung vào việc mô phỏng các tình trạng ảnh bị hư hỏng, áp dụng các thuật toán khôi phục ảnh tiêu chuẩn, đánh giá chất lượng kết quả bằng **PSNR & SSIM** và hỗ trợ xử lý ảnh theo nhiều chế độ thông qua giao diện **PySide6**, bao gồm **Single Image, Compare và Batch Processing**.
 
 ---
 
@@ -35,7 +35,11 @@ Thuật toán khôi phục
    └── SSIM
 ```
 
-Ngoài việc xử lý từng ảnh, hệ thống còn hỗ trợ **Batch Processing** để tự động thực hiện pipeline trên nhiều ảnh.
+Ngoài việc xử lý từng ảnh, hệ thống còn hỗ trợ:
+
+- **Single Image:** Khôi phục một ảnh.
+- **Compare:** Chạy và so sánh kết quả của các thuật toán.
+- **Batch Processing:** Tự động xử lý nhiều ảnh trong một thư mục.
 
 ---
 
@@ -45,30 +49,42 @@ Ngoài việc xử lý từng ảnh, hệ thống còn hỗ trợ **Batch Proces
 
 Module `generate_data.py` được sử dụng để tạo dữ liệu thử nghiệm từ ảnh ban đầu.
 
-Các dạng hư hỏng có thể được mô phỏng tùy theo cách triển khai, chẳng hạn:
+Project hỗ trợ mô phỏng **4 loại ảnh hỏng** nhằm phục vụ việc kiểm thử các thuật toán khôi phục.
 
-- Nhiễu ảnh.
-- Nhiễu Salt-and-Pepper.
-- Làm mờ ảnh.
-- Vết xước hoặc vùng ảnh bị mất.
-- Các dạng degradation khác phục vụ quá trình thử nghiệm.
+Dữ liệu được tổ chức thành:
 
-Mục đích là tạo ra một cặp dữ liệu:
+```text
+dataset/
+├── images_clean/        # Ảnh gốc
+├── images_corrupted/    # Ảnh sau khi mô phỏng hư hỏng
+└── images_masks/        # Mask vùng hư hỏng
+```
+
+Quy trình:
 
 ```text
 Original Image
       │
       ▼
-Damaged Image
+generate_data.py
+      │
+      ▼
+Damaged / Corrupted Image
+      │
+      └── Damage Mask
 ```
 
-để có thể kiểm tra khả năng khôi phục của từng thuật toán.
+Các ảnh được sinh ra phục vụ cho việc kiểm thử và đánh giá các thuật toán khôi phục.
 
 ---
 
 ### 2. Khôi phục bằng Median Filter
 
-`median_filter.py`
+File:
+
+```text
+algorithms/median_filter.py
+```
 
 Sử dụng **Median Filter (bộ lọc trung vị)** để giảm nhiễu, đặc biệt phù hợp với các loại nhiễu dạng xung như **Salt-and-Pepper Noise**.
 
@@ -90,11 +106,17 @@ Chọn giá trị trung vị
 Pixel sau lọc
 ```
 
+Median Filter giúp loại bỏ các pixel nhiễu bất thường đồng thời hạn chế làm mất các cạnh quan trọng của ảnh.
+
 ---
 
 ### 3. Khôi phục bằng Gaussian Filter
 
-`gaussian_filter.py`
+File:
+
+```text
+algorithms/gaussian_filter.py
+```
 
 Sử dụng **Gaussian Filter (bộ lọc Gaussian)** để làm mượt ảnh và giảm nhiễu.
 
@@ -104,19 +126,41 @@ Thuật toán phù hợp cho:
 
 - Giảm nhiễu Gaussian.
 - Làm mượt ảnh.
-- Tiền xử lý trước các bước khôi phục khác.
+- Giảm các biến động nhỏ về giá trị pixel.
+- Tiền xử lý trước các bước xử lý ảnh khác.
+
+Quy trình:
+
+```text
+Input Image
+     │
+     ▼
+Gaussian Kernel
+     │
+     ▼
+Convolution
+     │
+     ▼
+Smoothed / Restored Image
+```
 
 ---
 
 ### 4. Khôi phục vết xước bằng Inpainting
 
-`inpainting.py`
+File:
 
-Sử dụng kỹ thuật **Image Inpainting** để phục hồi các vùng ảnh bị mất hoặc bị che phủ, ví dụ:
+```text
+algorithms/inpainting.py
+```
+
+Sử dụng kỹ thuật **Image Inpainting** để phục hồi các vùng ảnh bị mất hoặc bị che phủ dựa trên thông tin từ các vùng lân cận.
+
+Có thể sử dụng để xử lý:
 
 - Vết xước.
 - Vết rách.
-- Pixel bị mất.
+- Vùng ảnh bị mất.
 - Các vùng nhỏ cần tái tạo.
 
 Quy trình tổng quát:
@@ -137,9 +181,121 @@ Quy trình tổng quát:
 
 ---
 
+## 🖥️ Giao diện người dùng
+
+Project sử dụng **PySide6** để xây dựng giao diện đồ họa.
+
+File giao diện chính:
+
+```text
+src/project_1/gui/main_window.py
+```
+
+Giao diện được tổ chức thành 3 chế độ chính:
+
+```text
+┌─────────────────────────────────────────────┐
+│            RESTORING PHOTOS                 │
+├──────────────┬──────────────┬───────────────┤
+│    Single    │    Compare   │     Batch     │
+├──────────────┴──────────────┴───────────────┤
+│                                             │
+│              Image Preview                  │
+│                                             │
+├─────────────────────────────────────────────┤
+│ Algorithm: [ Median Filter ▼ ]              │
+│                                             │
+│ PSNR: XX.XX dB       SSIM: X.XXXX           │
+│                                             │
+│             [ Restore ] [ Save ]             │
+└─────────────────────────────────────────────┘
+```
+
+### Single
+
+Cho phép người dùng:
+
+1. Chọn một ảnh.
+2. Chọn thuật toán khôi phục.
+3. Thực hiện khôi phục.
+4. Xem ảnh kết quả.
+5. Xem các chỉ số PSNR và SSIM.
+6. Lưu ảnh kết quả.
+
+---
+
+### Compare
+
+Cho phép chạy nhiều thuật toán trên cùng một ảnh để so sánh.
+
+Ví dụ:
+
+```text
+                    Corrupted Image
+                           │
+             ┌─────────────┼─────────────┐
+             │             │             │
+             ▼             ▼             ▼
+          Median        Gaussian     Inpainting
+             │             │             │
+             ▼             ▼             ▼
+          Restored      Restored      Restored
+             │             │             │
+             └─────────────┼─────────────┘
+                           │
+                           ▼
+                      PSNR / SSIM
+                           │
+                           ▼
+                    Compare Results
+```
+
+Các chỉ số PSNR và SSIM được sử dụng để đánh giá và so sánh hiệu quả của từng thuật toán.
+
+---
+
+### Batch Processing
+
+Cho phép chọn một thư mục chứa nhiều ảnh và thực hiện khôi phục tự động.
+
+```text
+Input Folder
+     │
+     ├── image_01
+     ├── image_02
+     ├── image_03
+     ├── ...
+     └── image_N
+            │
+            ▼
+     Batch Processor
+            │
+            ▼
+    Restoration Pipeline
+            │
+            ▼
+        outputs/
+```
+
+Batch Processing được thực hiện bằng `QThread` trong:
+
+```text
+gui/threads.py
+```
+
+Việc chạy tác vụ nền giúp giao diện không bị treo trong quá trình xử lý nhiều ảnh.
+
+---
+
 ## 📊 Đánh giá chất lượng
 
-Module `metrics/evaluator.py` cung cấp các phương pháp đánh giá chất lượng ảnh sau khi khôi phục.
+Module:
+
+```text
+metrics/evaluator.py
+```
+
+cung cấp các phương pháp đánh giá chất lượng ảnh sau khi khôi phục.
 
 ### PSNR
 
@@ -162,7 +318,9 @@ Trong đó:
 - `MAX_I`: Giá trị pixel lớn nhất.
 - `MSE`: Mean Squared Error.
 
-Thông thường, **PSNR càng cao thì ảnh khôi phục càng gần ảnh gốc**.
+Thông thường:
+
+> **PSNR càng cao → ảnh khôi phục càng gần ảnh gốc.**
 
 ---
 
@@ -170,7 +328,7 @@ Thông thường, **PSNR càng cao thì ảnh khôi phục càng gần ảnh g�
 
 **SSIM (Structural Similarity Index Measure)** đánh giá mức độ tương đồng về cấu trúc giữa hai ảnh.
 
-SSIM xem xét các yếu tố như:
+SSIM xem xét các yếu tố:
 
 - Độ sáng.
 - Độ tương phản.
@@ -182,54 +340,86 @@ Giá trị SSIM thường nằm trong khoảng:
 -1 → 1
 ```
 
-Trong đó giá trị càng gần `1` thể hiện hai ảnh càng tương đồng về cấu trúc.
+Trong đó:
+
+> **SSIM càng gần 1 → hai ảnh càng tương đồng về cấu trúc.**
 
 ---
 
 ## 📁 Cấu trúc thư mục
 
 ```text
-Mini-Project-Restoring-Photos/
+Project-1/
 │
-├── src/
-│   └── project_1/
-│       ├── __init__.py
-│       ├── entrypoint.py
-│       ├── generate_data.py
-│       │
-│       ├── algorithms/
-│       │   ├── __init__.py
-│       │   ├── base.py
-│       │   ├── median_filter.py
-│       │   ├── gaussian_filter.py
-│       │   └── inpainting.py
-│       │
-│       ├── metrics/
-│       │   ├── __init__.py
-│       │   └── evaluator.py
-│       │
-│       └── utils/
-│           ├── __init__.py
-│           └── batch_processor.py
+├── .venv/                         # Môi trường ảo Python
+├── .gitignore                    # Ignore dataset/, outputs/, __pycache__
+├── .python-version               # Phiên bản Python
+├── pyproject.toml                # Project & dependencies
+├── README.md                     # Tài liệu dự án
+├── test.ipynb                    # Test thuật toán & tạo hình cho báo cáo
 │
-├── pyproject.toml
-├── uv.lock
-└── README.md
+├── dataset/                      # Dữ liệu ảnh test
+│   ├── images_clean/             # Ảnh sạch gốc
+│   ├── images_corrupted/         # Ảnh hỏng
+│   └── images_masks/             # Mask vùng hư hỏng
+│
+├── outputs/                      # Kết quả xuất từ GUI
+│
+└── src/
+    └── project_1/
+        ├── __init__.py
+        ├── main.py               # Launcher khởi chạy PySide6 GUI
+        ├── entrypoint.py         # RestorationPipeline & Controller
+        ├── generate_data.py      # Sinh 4 loại ảnh hỏng
+        │
+        ├── algorithms/           # Logic lõi khôi phục ảnh
+        │   ├── __init__.py
+        │   ├── base.py           # BaseRestorationAlgorithm
+        │   ├── median_filter.py  # Median Filter
+        │   ├── gaussian_filter.py# Gaussian Filter
+        │   └── inpainting.py     # Image Inpainting
+        │
+        ├── metrics/              # Đánh giá chất lượng
+        │   ├── __init__.py
+        │   └── evaluator.py      # PSNR & SSIM
+        │
+        ├── gui/                  # Giao diện PySide6
+        │   ├── __init__.py
+        │   ├── main_window.py    # Cửa sổ chính
+        │   └── threads.py        # QThread / Batch Processing
+        │
+        └── utils/                # Tiện ích bổ trợ
+            ├── __init__.py
+            └── batch_processor.py# Xử lý ảnh hàng loạt
 ```
 
-### Giải thích các module
+---
 
-| Module                     | Vai trò                                                  |
-| -------------------------- | -------------------------------------------------------- |
-| `entrypoint.py`            | Entrypoint chính, điều phối toàn bộ pipeline             |
-| `generate_data.py`         | Tạo dữ liệu ảnh thử nghiệm và mô phỏng ảnh hư hỏng       |
-| `algorithms/base.py`       | Định nghĩa interface/base class chung cho các thuật toán |
-| `median_filter.py`         | Cài đặt Median Filter                                    |
-| `gaussian_filter.py`       | Cài đặt Gaussian Filter                                  |
-| `inpainting.py`            | Cài đặt thuật toán Inpainting                            |
-| `metrics/evaluator.py`     | Tính toán PSNR và SSIM                                   |
-| `utils/batch_processor.py` | Xử lý hàng loạt nhiều ảnh                                |
-| `__init__.py`              | Khai báo Python package                                  |
+## 🧩 Giải thích các module
+
+| Module                     | Vai trò                                                             |
+| -------------------------- | ------------------------------------------------------------------- |
+| `.venv/`                   | Môi trường ảo Python được tạo bởi `uv`                              |
+| `.gitignore`               | Cấu hình các file/thư mục không đưa lên Git                         |
+| `.python-version`          | Xác định phiên bản Python sử dụng                                   |
+| `pyproject.toml`           | Quản lý project và dependencies                                     |
+| `test.ipynb`               | Notebook dùng để test thuật toán, phân tích và tạo hình cho báo cáo |
+| `dataset/`                 | Chứa dữ liệu ảnh thử nghiệm                                         |
+| `images_clean/`            | Chứa ảnh gốc sạch                                                   |
+| `images_corrupted/`        | Chứa ảnh sau khi mô phỏng hư hỏng                                   |
+| `images_masks/`            | Chứa mask cho các vùng hư hỏng                                      |
+| `outputs/`                 | Chứa các kết quả được xuất từ GUI                                   |
+| `main.py`                  | Launcher khởi chạy ứng dụng PySide6                                 |
+| `entrypoint.py`            | Controller chính, điều phối Restoration Pipeline                    |
+| `generate_data.py`         | Sinh dữ liệu ảnh hỏng                                               |
+| `algorithms/base.py`       | Định nghĩa chuẩn chung cho các thuật toán khôi phục                 |
+| `median_filter.py`         | Cài đặt Median Filter                                               |
+| `gaussian_filter.py`       | Cài đặt Gaussian Filter                                             |
+| `inpainting.py`            | Cài đặt Image Inpainting                                            |
+| `metrics/evaluator.py`     | Tính toán PSNR và SSIM                                              |
+| `gui/main_window.py`       | Cửa sổ chính và các chức năng GUI                                   |
+| `gui/threads.py`           | QThread xử lý tác vụ nền                                            |
+| `utils/batch_processor.py` | Xử lý nhiều ảnh trong thư mục                                       |
 
 ---
 
@@ -237,8 +427,13 @@ Mini-Project-Restoring-Photos/
 
 Project sử dụng:
 
-- **Python >= 3.14**
-- **uv** — quản lý môi trường và dependency.
+- **Python 3.12**
+- **uv** — quản lý môi trường và dependencies.
+- **OpenCV** — xử lý ảnh.
+- **PySide6** — xây dựng giao diện GUI.
+- **scikit-image** — hỗ trợ các phép đo và xử lý ảnh.
+
+Các dependencies được quản lý trong `pyproject.toml`.
 
 Kiểm tra phiên bản:
 
@@ -255,10 +450,10 @@ uv --version
 
 ```bash
 git clone <repository-url>
-cd Mini-Project-Restoring-Photos
+cd Project-1
 ```
 
-### 2. Tạo môi trường và cài dependency
+### 2. Cài đặt dependencies
 
 Nếu project đã có `pyproject.toml` và `uv.lock`:
 
@@ -266,17 +461,17 @@ Nếu project đã có `pyproject.toml` và `uv.lock`:
 uv sync
 ```
 
-`uv` sẽ tự động tạo virtual environment và cài đặt các dependency được khai báo trong project.
+`uv` sẽ tự động tạo virtual environment `.venv` và cài đặt các dependencies cần thiết.
 
 ### 3. Kích hoạt virtual environment
 
-Windows:
+#### Windows
 
 ```bash
 .venv\Scripts\activate
 ```
 
-Linux / macOS:
+#### Linux / macOS
 
 ```bash
 source .venv/bin/activate
@@ -286,25 +481,48 @@ source .venv/bin/activate
 
 ## ▶️ Chạy chương trình
 
-Entrypoint chính của project nằm tại:
+Ứng dụng GUI được khởi chạy từ:
 
 ```text
-src/project_1/entrypoint.py
+src/project_1/main.py
 ```
 
-Có thể chạy project thông qua:
+Sử dụng:
 
 ```bash
-uv run python -m project_1.entrypoint
+uv run python -m project_1.main
 ```
 
-Hoặc nếu project khai báo script trong `pyproject.toml`, có thể sử dụng command tương ứng:
+Nếu `pyproject.toml` đã khai báo script tương ứng, có thể chạy bằng command được định nghĩa trong project.
+
+---
+
+## 🧪 Tạo dữ liệu thử nghiệm
+
+File:
+
+```text
+src/project_1/generate_data.py
+```
+
+được sử dụng để tạo dữ liệu ảnh hỏng.
+
+Chạy:
 
 ```bash
-uv run <command>
+uv run python -m project_1.generate_data
 ```
 
-> Command chạy chính xác phụ thuộc vào cấu hình `pyproject.toml`.
+Dữ liệu sau khi tạo được tổ chức trong:
+
+```text
+dataset/
+├── images_clean/
+├── images_corrupted/
+└── images_masks/
+```
+
+> Command cụ thể có thể thay đổi tùy theo cách triển khai của `generate_data.py`.
 
 ---
 
@@ -314,31 +532,31 @@ Hệ thống được thiết kế theo pipeline:
 
 ### Bước 1 — Input
 
-Nhận ảnh đầu vào từ thư mục dữ liệu.
+Nhận ảnh đầu vào:
 
 ```text
-Input Images
+Input Image
      │
      ▼
 ```
 
 ### Bước 2 — Generate Data
 
-Tạo phiên bản ảnh bị hư hỏng để phục vụ thử nghiệm.
+Tạo phiên bản ảnh bị hư hỏng:
 
 ```text
-Original
-   │
-   ▼
+Original Image
+     │
+     ▼
 Degradation
-   │
-   ▼
+     │
+     ▼
 Damaged Image
 ```
 
 ### Bước 3 — Restoration
 
-Áp dụng một trong các thuật toán:
+Áp dụng thuật toán khôi phục:
 
 ```text
 Damaged Image
@@ -361,16 +579,12 @@ Restored Image ───────┤
                       └──► SSIM
 ```
 
-### Bước 5 — Batch Processing
+### Bước 5 — Output
 
-Pipeline có thể được áp dụng tự động cho nhiều ảnh:
+Kết quả được xuất ra:
 
 ```text
-Image 1 ──► Restore ──► Evaluate
-Image 2 ──► Restore ──► Evaluate
-Image 3 ──► Restore ──► Evaluate
-...
-Image N ──► Restore ──► Evaluate
+outputs/
 ```
 
 ---
@@ -383,17 +597,14 @@ Các thuật toán khôi phục được tách thành package riêng:
 algorithms/
 │
 ├── base.py
-│
 ├── median_filter.py
 ├── gaussian_filter.py
 └── inpainting.py
 ```
 
-`base.py` đóng vai trò định nghĩa chuẩn chung cho các thuật toán.
+`base.py` đóng vai trò định nghĩa chuẩn chung cho các thuật toán khôi phục.
 
-Điều này giúp hệ thống dễ dàng mở rộng thêm các phương pháp khác trong tương lai mà không cần thay đổi nhiều ở pipeline chính.
-
-Ví dụ:
+Kiến trúc này giúp các thuật toán có cùng interface và dễ dàng mở rộng trong tương lai.
 
 ```text
 BaseRestorationAlgorithm
@@ -409,7 +620,7 @@ BaseRestorationAlgorithm
 
 ## 📈 Kết quả đầu ra
 
-Sau khi chạy pipeline, hệ thống hướng tới việc cung cấp:
+Sau khi chạy pipeline, hệ thống cung cấp:
 
 - Ảnh gốc.
 - Ảnh bị hư hỏng.
@@ -427,22 +638,45 @@ Ví dụ bảng đánh giá:
 | Gaussian Filter |       ... |  ... |
 | Inpainting      |       ... |  ... |
 
-Các chỉ số này có thể được sử dụng để **so sánh hiệu quả giữa các phương pháp khôi phục ảnh**.
+Các chỉ số này được sử dụng để **so sánh hiệu quả giữa các phương pháp khôi phục ảnh**.
+
+---
+
+## 📝 Notebook thử nghiệm
+
+File:
+
+```text
+test.ipynb
+```
+
+được sử dụng để:
+
+- Test từng thuật toán.
+- Thử nghiệm các tham số.
+- So sánh kết quả.
+- Tính PSNR / SSIM.
+- Vẽ biểu đồ.
+- Trực quan hóa ảnh trước và sau khôi phục.
+- Chụp hình kết quả phục vụ báo cáo.
+
+Notebook phục vụ mục đích thử nghiệm và phân tích, không phải thành phần bắt buộc để chạy ứng dụng GUI.
 
 ---
 
 ## 🎯 Phạm vi project
 
-Project tập trung vào việc minh họa các kỹ thuật xử lý ảnh kinh điển, bao gồm:
+Project tập trung vào các kỹ thuật xử lý ảnh truyền thống:
 
-- Image Degradation.
-- Image Denoising.
-- Image Restoration.
-- Image Inpainting.
-- Image Quality Assessment.
-- Batch Image Processing.
+- **Image Degradation**
+- **Image Denoising**
+- **Image Restoration**
+- **Image Inpainting**
+- **Image Quality Assessment**
+- **Batch Image Processing**
+- **Graphical User Interface với PySide6**
 
-Project **không tập trung vào các mô hình Deep Learning hoặc Generative AI** mà ưu tiên các phương pháp xử lý ảnh truyền thống để phù hợp với mục tiêu của học phần **Xử lý ảnh**.
+Project **không tập trung vào Deep Learning hoặc Generative AI**, mà ưu tiên các phương pháp xử lý ảnh truyền thống để phù hợp với nội dung của học phần **Xử lý ảnh**.
 
 ---
 
@@ -450,14 +684,14 @@ Project **không tập trung vào các mô hình Deep Learning hoặc Generative
 
 Kiến trúc hiện tại cho phép bổ sung thêm:
 
-- Các bộ lọc khác.
-- Các thuật toán khử nhiễu khác.
+- Các bộ lọc khử nhiễu khác.
+- Các thuật toán Image Restoration khác.
 - Các phương pháp Inpainting khác.
 - Các metric đánh giá khác.
-- GUI/Web interface.
-- Visualization kết quả.
+- Visualization nâng cao.
 - So sánh tự động nhiều thuật toán.
 - Batch Processing nâng cao.
+- Các chức năng GUI mới.
 
 Ví dụ:
 
@@ -467,8 +701,8 @@ algorithms/
 ├── median_filter.py
 ├── gaussian_filter.py
 ├── inpainting.py
-├── bilateral_filter.py       # Future
-├── wiener_filter.py          # Future
+├── bilateral_filter.py      # Future
+├── wiener_filter.py         # Future
 └── ...
 ```
 
@@ -477,6 +711,9 @@ algorithms/
 ## 👨‍💻 Học phần
 
 **Môn học:** Xử lý ảnh
+
 **Project:** Mini-Project – Restoring Photos
 
-Mục tiêu của project là áp dụng kiến thức xử lý ảnh vào một bài toán thực tế: **khôi phục và nâng cao chất lượng ảnh cũ bị hư hỏng**.
+Mục tiêu của project là áp dụng kiến thức xử lý ảnh vào một bài toán thực tế:
+
+> **Khôi phục và nâng cao chất lượng ảnh cũ bị hư hỏng bằng các phương pháp xử lý ảnh truyền thống.**
