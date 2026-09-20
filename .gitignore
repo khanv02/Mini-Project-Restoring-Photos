@@ -1,5 +1,7 @@
 dataset/images_corrupted/
 dataset/images_masks/
-.github
-.specify
-.venv
+.github/
+.specify/
+.venv/
+output/
+**/__pycache__/
