@@ -22,7 +22,6 @@ Giả lập ảnh bị hư hỏng
    ▼
 Thuật toán khôi phục
    │
-   ├── Median Filter
    ├── Gaussian Filter
    └── Inpainting
    │
@@ -356,7 +355,6 @@ Project-1/
 ├── .python-version               # Phiên bản Python
 ├── pyproject.toml                # Project & dependencies
 ├── README.md                     # Tài liệu dự án
-├── test.ipynb                    # Test thuật toán & tạo hình cho báo cáo
 │
 ├── dataset/                      # Dữ liệu ảnh test
 │   ├── images_clean/             # Ảnh sạch gốc
@@ -375,7 +373,6 @@ Project-1/
         ├── algorithms/           # Logic lõi khôi phục ảnh
         │   ├── __init__.py
         │   ├── base.py           # BaseRestorationAlgorithm
-        │   ├── median_filter.py  # Median Filter
         │   ├── gaussian_filter.py# Gaussian Filter
         │   └── inpainting.py     # Image Inpainting
         │
@@ -413,7 +410,6 @@ Project-1/
 | `entrypoint.py`            | Controller chính, điều phối Restoration Pipeline                    |
 | `generate_data.py`         | Sinh dữ liệu ảnh hỏng                                               |
 | `algorithms/base.py`       | Định nghĩa chuẩn chung cho các thuật toán khôi phục                 |
-| `median_filter.py`         | Cài đặt Median Filter                                               |
 | `gaussian_filter.py`       | Cài đặt Gaussian Filter                                             |
 | `inpainting.py`            | Cài đặt Image Inpainting                                            |
 | `metrics/evaluator.py`     | Tính toán PSNR và SSIM                                              |
@@ -698,9 +694,9 @@ Ví dụ:
 ```text
 algorithms/
 ├── base.py
-├── median_filter.py
-├── gaussian_filter.py
-├── inpainting.py
+├── median_filter.py         # Future
+├── gaussian_filter.py        
+├── inpainting.py 
 ├── bilateral_filter.py      # Future
 ├── wiener_filter.py         # Future
 └── ...

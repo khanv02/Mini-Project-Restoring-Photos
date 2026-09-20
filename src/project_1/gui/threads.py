@@ -8,11 +8,12 @@ class BatchWorkerThread(QThread):
     file_processed = Signal(str)          # filename
     finished_all = Signal()
 
-    def __init__(self, pipeline, input_dir: str, output_dir: str, algo_name: str, kwargs: dict):
+    def __init__(self, pipeline, input_dir: str, output_dir: str, algo_name: str, kwargs: dict, mask_dir: str = None):
         super().__init__()
         self.pipeline = pipeline
         self.input_dir = input_dir
         self.output_dir = output_dir
+        self.mask_dir = mask_dir
         self.algo_name = algo_name
         self.kwargs = kwargs
         self._is_running = True
@@ -34,8 +35,20 @@ class BatchWorkerThread(QThread):
             
             img_path = os.path.join(self.input_dir, filename)
             corrupted = cv2.imread(img_path)
+            
             if corrupted is not None:
-                restored = self.pipeline.run_single(self.algo_name, corrupted, **self.kwargs)
+                task_kwargs = self.kwargs.copy()
+                
+                # Nếu chạy thuật toán Inpainting, tự tìm file mask trùng tên trong mask_dir
+                if self.algo_name == "inpainting" and self.mask_dir:
+                    mask_path = os.path.join(self.mask_dir, filename)
+                    if os.path.exists(mask_path):
+                        task_kwargs["mask"] = cv2.imread(mask_path)
+                    else:
+                        print(f"⚠️ Cảnh báo: Không tìm thấy mask tương ứng cho {filename}")
+                        continue
+
+                restored = self.pipeline.run_single(self.algo_name, corrupted, **task_kwargs)
                 save_path = os.path.join(self.output_dir, f"restored_{filename}")
                 cv2.imwrite(save_path, restored)
 

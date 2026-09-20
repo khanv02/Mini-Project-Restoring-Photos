@@ -9,9 +9,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtCore import Qt
 
-from ..entrypoint import RestorationPipeline
-from .threads import BatchWorkerThread
-
+from project_1.entrypoint import RestorationPipeline
+from project_1.gui.threads import BatchWorkerThread
 
 def cv_to_qpixmap(cv_img: np.ndarray, max_w=450, max_h=450) -> QPixmap:
     """Chuyển đổi OpenCV image (BGR) sang QPixmap để hiển thị trên PySide6"""
@@ -33,7 +32,7 @@ def cv_to_qpixmap(cv_img: np.ndarray, max_w=450, max_h=450) -> QPixmap:
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Khôi Phục Ảnh Cũ - Subject 2 Project 1")
+        self.setWindowTitle("Khôi Phục Ảnh Cũ - Subject 2 Project 1 (Gaussian & Inpainting)")
         self.resize(1100, 750)
 
         self.pipeline = RestorationPipeline()
@@ -68,30 +67,49 @@ class MainWindow(QMainWindow):
         btn_load_corr.clicked.connect(self._load_corrupted)
         left_layout.addWidget(btn_load_corr)
 
-        btn_load_mask = QPushButton("3. Mở Ảnh Mask (Tùy chọn)")
+        btn_load_mask = QPushButton("3. Mở Ảnh Mask (Vết xước)")
         btn_load_mask.clicked.connect(self._load_mask)
         left_layout.addWidget(btn_load_mask)
 
         left_layout.addWidget(QLabel("Chọn Thuật Toán:"))
         self.combo_algo = QComboBox()
-        self.combo_algo.addItems(["Median Filter", "Gaussian Filter", "Inpainting"])
+        self.combo_algo.addItems(["Gaussian Filter", "Inpainting"])
         self.combo_algo.currentIndexChanged.connect(self._on_algo_change)
         left_layout.addWidget(self.combo_algo)
 
-        # Tham số Kernel Size
-        left_layout.addWidget(QLabel("Kernel Size (Số lẻ):"))
+        # Widget điều khiển cho Gaussian
+        self.lbl_kernel = QLabel("Kernel Size (Số lẻ):")
         self.spin_kernel = QSpinBox()
         self.spin_kernel.setRange(3, 31)
         self.spin_kernel.setSingleStep(2)
         self.spin_kernel.setValue(5)
-        left_layout.addWidget(self.spin_kernel)
-
-        # Tham số Sigma
+        
         self.lbl_sigma = QLabel("Sigma Gaussian:")
         self.spin_sigma = QDoubleSpinBox()
         self.spin_sigma.setRange(0.1, 10.0)
         self.spin_sigma.setValue(1.2)
+
+        # Widget điều khiển cho Inpainting
+        self.lbl_radius = QLabel("Inpaint Radius:")
+        self.spin_radius = QSpinBox()
+        self.spin_radius.setRange(1, 20)
+        self.spin_radius.setValue(3)
+
+        self.lbl_inpaint_method = QLabel("Inpaint Method:")
+        self.combo_inpaint_method = QComboBox()
+        self.combo_inpaint_method.addItems(["Telea", "Navier-Stokes"])
+
+        left_layout.addWidget(self.lbl_kernel)
+        left_layout.addWidget(self.spin_kernel)
         left_layout.addWidget(self.lbl_sigma)
+        left_layout.addWidget(self.spin_sigma)
+        left_layout.addWidget(self.lbl_radius)
+        left_layout.addWidget(self.spin_radius)
+        left_layout.addWidget(self.lbl_inpaint_method)
+        left_layout.addWidget(self.combo_inpaint_method)
+
+        # Cập nhật hiển thị tham số phù hợp với thuật toán ban đầu
+        self._on_algo_change(0)
 
         btn_run = QPushButton("🚀 Thực Thi Khôi Phục")
         btn_run.setStyleSheet("font-weight: bold; padding: 8px; background-color: #2b5b84; color: white;")
@@ -150,13 +168,19 @@ class MainWindow(QMainWindow):
         box = QGroupBox("Xử Lý Hàng Loạt (Batch Processing)")
         box_layout = QVBoxLayout(box)
 
-        btn_in_dir = QPushButton("Chọn Thư Mục Đầu Vào")
+        btn_in_dir = QPushButton("1. Chọn Thư Mục Ảnh Đầu Vào (Corrupted)")
         btn_in_dir.clicked.connect(self._select_batch_in)
         self.lbl_in_dir = QLabel("Chưa chọn...")
         box_layout.addWidget(btn_in_dir)
         box_layout.addWidget(self.lbl_in_dir)
 
-        btn_out_dir = QPushButton("Chọn Thư Mục Lưu Output")
+        btn_mask_dir = QPushButton("2. Chọn Thư Mục Mask (Bắt buộc nếu dùng Inpainting)")
+        btn_mask_dir.clicked.connect(self._select_batch_mask)
+        self.lbl_mask_dir = QLabel("Chưa chọn (Không bắt buộc với Gaussian)...")
+        box_layout.addWidget(btn_mask_dir)
+        box_layout.addWidget(self.lbl_mask_dir)
+
+        btn_out_dir = QPushButton("3. Chọn Thư Mục Lưu Output")
         btn_out_dir.clicked.connect(self._select_batch_out)
         self.lbl_out_dir = QLabel("Chưa chọn...")
         box_layout.addWidget(btn_out_dir)
@@ -164,10 +188,11 @@ class MainWindow(QMainWindow):
 
         box_layout.addWidget(QLabel("Thuật toán áp dụng:"))
         self.combo_batch_algo = QComboBox()
-        self.combo_batch_algo.addItems(["Median Filter", "Gaussian Filter"])
+        self.combo_batch_algo.addItems(["Gaussian Filter", "Inpainting"])
         box_layout.addWidget(self.combo_batch_algo)
 
         btn_start_batch = QPushButton("▶ Bắt Đầu Xử Lý Batch")
+        btn_start_batch.setStyleSheet("font-weight: bold; padding: 6px; background-color: #2b5b84; color: white;")
         btn_start_batch.clicked.connect(self._start_batch)
         box_layout.addWidget(btn_start_batch)
 
@@ -198,39 +223,49 @@ class MainWindow(QMainWindow):
             self.mask_img = cv2.imread(path)
 
     def _on_algo_change(self, idx):
-        is_gauss = (idx == 1)
+        is_gauss = (idx == 0)
+        self.lbl_kernel.setVisible(is_gauss)
+        self.spin_kernel.setVisible(is_gauss)
         self.lbl_sigma.setVisible(is_gauss)
         self.spin_sigma.setVisible(is_gauss)
+
+        self.lbl_radius.setVisible(not is_gauss)
+        self.spin_radius.setVisible(not is_gauss)
+        self.lbl_inpaint_method.setVisible(not is_gauss)
+        self.combo_inpaint_method.setVisible(not is_gauss)
 
     def _run_single_restoration(self):
         if self.corrupted_img is None:
             QMessageBox.warning(self, "Lỗi", "Vui lòng mở ảnh lỗi trước!")
             return
 
-        algo_map = {0: "median", 1: "gaussian", 2: "inpainting"}
+        algo_map = {0: "gaussian", 1: "inpainting"}
         selected_key = algo_map[self.combo_algo.currentIndex()]
         
-        ksize = self.spin_kernel.value()
-        if ksize % 2 == 0:
-            ksize += 1
-
-        kwargs = {"kernel_size": ksize}
+        kwargs = {}
         if selected_key == "gaussian":
+            ksize = self.spin_kernel.value()
+            if ksize % 2 == 0:
+                ksize += 1
+            kwargs["kernel_size"] = ksize
             kwargs["sigma"] = self.spin_sigma.value()
         elif selected_key == "inpainting":
             if self.mask_img is None:
-                QMessageBox.warning(self, "Lỗi", "Thuật toán Inpainting cần có Mask!")
+                QMessageBox.warning(self, "Lỗi", "Thuật toán Inpainting cần phải nạp Ảnh Mask!")
                 return
             kwargs["mask"] = self.mask_img
+            kwargs["radius"] = self.spin_radius.value()
+            kwargs["method"] = self.combo_inpaint_method.currentText().lower()
 
         # Thực thi
         self.restored_img = self.pipeline.run_single(selected_key, self.corrupted_img, **kwargs)
         self.lbl_view_after.setPixmap(cv_to_qpixmap(self.restored_img))
 
-        # Tính chỉ số nếu có ảnh gốc
+        # Tính chỉ số và In ra Terminal nếu có ảnh gốc
         if self.clean_img is not None:
             m = self.pipeline.evaluate(self.clean_img, self.restored_img)
             self.lbl_metrics.setText(f"PSNR: {m['PSNR']} dB | SSIM: {m['SSIM']}")
+            print(f"[EVALUATION - {selected_key.upper()}] PSNR: {m['PSNR']} dB | SSIM: {m['SSIM']}")
 
     def _save_restored(self):
         if self.restored_img is None:
@@ -248,18 +283,27 @@ class MainWindow(QMainWindow):
         res = self.pipeline.compare_all(self.clean_img, self.corrupted_img, self.mask_img)
         self.table_comp.setRowCount(0)
 
+        print("\n--- BẢNG SO SÁNH THUẬT TOÁN (TERMINAL LOG) ---")
         for row, (method_name, data) in enumerate(res.items()):
             self.table_comp.insertRow(row)
             self.table_comp.setItem(row, 0, QTableWidgetItem(method_name))
             self.table_comp.setItem(row, 1, QTableWidgetItem(str(data["metrics"]["PSNR"])))
             self.table_comp.setItem(row, 2, QTableWidgetItem(str(data["metrics"]["SSIM"])))
             self.table_comp.setItem(row, 3, QTableWidgetItem(str(data["time"])))
+            
+            print(f"[{method_name}] PSNR: {data['metrics']['PSNR']} dB | SSIM: {data['metrics']['SSIM']} | Time: {data['time']}s")
+        print("----------------------------------------------\n")
 
     # ================= BATCH PROCESSING =================
     def _select_batch_in(self):
         d = QFileDialog.getExistingDirectory(self, "Chọn thư mục đầu vào")
         if d:
             self.lbl_in_dir.setText(d)
+
+    def _select_batch_mask(self):
+        d = QFileDialog.getExistingDirectory(self, "Chọn thư mục mask")
+        if d:
+            self.lbl_mask_dir.setText(d)
 
     def _select_batch_out(self):
         d = QFileDialog.getExistingDirectory(self, "Chọn thư mục lưu kết quả")
@@ -269,18 +313,24 @@ class MainWindow(QMainWindow):
     def _start_batch(self):
         in_d = self.lbl_in_dir.text()
         out_d = self.lbl_out_dir.text()
+        mask_d = self.lbl_mask_dir.text() if self.lbl_mask_dir.text() != "Chưa chọn (Không bắt buộc với Gaussian)..." else None
 
         if in_d == "Chưa chọn..." or out_d == "Chưa chọn...":
-            QMessageBox.warning(self, "Lỗi", "Vui lòng chọn đầy đủ thư mục đầu vào và đầu ra!")
+            QMessageBox.warning(self, "Lỗi", "Vui lòng chọn thư mục đầu vào và đầu ra!")
             return
 
-        algo_key = "median" if self.combo_batch_algo.currentIndex() == 0 else "gaussian"
+        algo_key = "gaussian" if self.combo_batch_algo.currentIndex() == 0 else "inpainting"
+        
+        if algo_key == "inpainting" and (not mask_d or mask_d == "Chưa chọn..."):
+            QMessageBox.warning(self, "Lỗi", "Vui lòng chọn thư mục Mask để chạy Batch Inpainting!")
+            return
+
+        kwargs = {"kernel_size": 5, "sigma": 1.2} if algo_key == "gaussian" else {"radius": 3, "method": "telea"}
         
         self.thread = BatchWorkerThread(
-            self.pipeline, in_d, out_d, algo_key, {"kernel_size": 5}
+            self.pipeline, in_d, out_d, algo_key, kwargs, mask_dir=mask_d
         )
         self.thread.progress_changed.connect(lambda cur, tot: self.progress_bar.setValue(int(cur / tot * 100)))
         self.thread.file_processed.connect(lambda f: self.lbl_batch_status.setText(f"Đang xử lý: {f}"))
         self.thread.finished_all.connect(lambda: self.lbl_batch_status.setText("✅ Hoàn thành Batch Processing!"))
-        
         self.thread.start()

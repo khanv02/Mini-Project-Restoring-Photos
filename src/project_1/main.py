@@ -1,6 +1,11 @@
 import sys
+from pathlib import Path
+
+# Thêm thư mục src vào Python Path
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+from project_1.gui.main_window import MainWindow
 from PySide6.QtWidgets import QApplication
-from .gui.main_window import MainWindow
 
 def main():
     app = QApplication(sys.argv)
