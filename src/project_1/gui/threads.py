@@ -39,8 +39,8 @@ class BatchWorkerThread(QThread):
             if corrupted is not None:
                 task_kwargs = self.kwargs.copy()
                 
-                # Nếu chạy thuật toán Inpainting, tự tìm file mask trùng tên trong mask_dir
-                if self.algo_name == "inpainting" and self.mask_dir:
+                # Nạp ảnh Mask cho cả 'inpainting' VÀ 'combined'
+                if self.algo_name in ["inpainting", "combined"] and self.mask_dir:
                     mask_path = os.path.join(self.mask_dir, filename)
                     if os.path.exists(mask_path):
                         task_kwargs["mask"] = cv2.imread(mask_path)
@@ -49,8 +49,9 @@ class BatchWorkerThread(QThread):
                         continue
 
                 restored = self.pipeline.run_single(self.algo_name, corrupted, **task_kwargs)
-                save_path = os.path.join(self.output_dir, f"restored_{filename}")
-                cv2.imwrite(save_path, restored)
+                if restored is not None:
+                    save_path = os.path.join(self.output_dir, f"restored_{filename}")
+                    cv2.imwrite(save_path, restored)
 
             self.progress_changed.emit(idx + 1, total)
             self.file_processed.emit(filename)

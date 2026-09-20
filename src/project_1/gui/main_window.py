@@ -1,3 +1,4 @@
+import os
 import cv2
 import numpy as np
 from PySide6.QtWidgets import (
@@ -73,7 +74,8 @@ class MainWindow(QMainWindow):
 
         left_layout.addWidget(QLabel("Chọn Thuật Toán:"))
         self.combo_algo = QComboBox()
-        self.combo_algo.addItems(["Gaussian Filter", "Inpainting"])
+        # Thêm lựa chọn Combined vào ComboBox
+        self.combo_algo.addItems(["Gaussian Filter", "Inpainting", "Combined (Inpainting + Gaussian)"])
         self.combo_algo.currentIndexChanged.connect(self._on_algo_change)
         left_layout.addWidget(self.combo_algo)
 
@@ -174,7 +176,7 @@ class MainWindow(QMainWindow):
         box_layout.addWidget(btn_in_dir)
         box_layout.addWidget(self.lbl_in_dir)
 
-        btn_mask_dir = QPushButton("2. Chọn Thư Mục Mask (Bắt buộc nếu dùng Inpainting)")
+        btn_mask_dir = QPushButton("2. Chọn Thư Mục Mask (Bắt buộc với Inpainting / Combined)")
         btn_mask_dir.clicked.connect(self._select_batch_mask)
         self.lbl_mask_dir = QLabel("Chưa chọn (Không bắt buộc với Gaussian)...")
         box_layout.addWidget(btn_mask_dir)
@@ -188,7 +190,7 @@ class MainWindow(QMainWindow):
 
         box_layout.addWidget(QLabel("Thuật toán áp dụng:"))
         self.combo_batch_algo = QComboBox()
-        self.combo_batch_algo.addItems(["Gaussian Filter", "Inpainting"])
+        self.combo_batch_algo.addItems(["Gaussian Filter", "Inpainting", "Combined (Inpainting + Gaussian)"])
         box_layout.addWidget(self.combo_batch_algo)
 
         btn_start_batch = QPushButton("▶ Bắt Đầu Xử Lý Batch")
@@ -223,35 +225,41 @@ class MainWindow(QMainWindow):
             self.mask_img = cv2.imread(path)
 
     def _on_algo_change(self, idx):
-        is_gauss = (idx == 0)
-        self.lbl_kernel.setVisible(is_gauss)
-        self.spin_kernel.setVisible(is_gauss)
-        self.lbl_sigma.setVisible(is_gauss)
-        self.spin_sigma.setVisible(is_gauss)
+        # idx 0: Gaussian, idx 1: Inpainting, idx 2: Combined
+        show_gauss = (idx == 0 or idx == 2)
+        show_inpaint = (idx == 1 or idx == 2)
 
-        self.lbl_radius.setVisible(not is_gauss)
-        self.spin_radius.setVisible(not is_gauss)
-        self.lbl_inpaint_method.setVisible(not is_gauss)
-        self.combo_inpaint_method.setVisible(not is_gauss)
+        self.lbl_kernel.setVisible(show_gauss)
+        self.spin_kernel.setVisible(show_gauss)
+        self.lbl_sigma.setVisible(show_gauss)
+        self.spin_sigma.setVisible(show_gauss)
+
+        self.lbl_radius.setVisible(show_inpaint)
+        self.spin_radius.setVisible(show_inpaint)
+        self.lbl_inpaint_method.setVisible(show_inpaint)
+        self.combo_inpaint_method.setVisible(show_inpaint)
 
     def _run_single_restoration(self):
         if self.corrupted_img is None:
             QMessageBox.warning(self, "Lỗi", "Vui lòng mở ảnh lỗi trước!")
             return
 
-        algo_map = {0: "gaussian", 1: "inpainting"}
+        algo_map = {0: "gaussian", 1: "inpainting", 2: "combined"}
         selected_key = algo_map[self.combo_algo.currentIndex()]
         
         kwargs = {}
-        if selected_key == "gaussian":
+        # Chuẩn bị tham số Gaussian
+        if selected_key in ["gaussian", "combined"]:
             ksize = self.spin_kernel.value()
             if ksize % 2 == 0:
                 ksize += 1
             kwargs["kernel_size"] = ksize
             kwargs["sigma"] = self.spin_sigma.value()
-        elif selected_key == "inpainting":
+
+        # Chuẩn bị tham số Inpainting
+        if selected_key in ["inpainting", "combined"]:
             if self.mask_img is None:
-                QMessageBox.warning(self, "Lỗi", "Thuật toán Inpainting cần phải nạp Ảnh Mask!")
+                QMessageBox.warning(self, "Lỗi", f"Thuật toán {selected_key.title()} cần phải nạp Ảnh Mask!")
                 return
             kwargs["mask"] = self.mask_img
             kwargs["radius"] = self.spin_radius.value()
@@ -319,13 +327,25 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Lỗi", "Vui lòng chọn thư mục đầu vào và đầu ra!")
             return
 
-        algo_key = "gaussian" if self.combo_batch_algo.currentIndex() == 0 else "inpainting"
+        idx = self.combo_batch_algo.currentIndex()
+        algo_map = {0: "gaussian", 1: "inpainting", 2: "combined"}
+        algo_key = algo_map[idx]
         
-        if algo_key == "inpainting" and (not mask_d or mask_d == "Chưa chọn..."):
-            QMessageBox.warning(self, "Lỗi", "Vui lòng chọn thư mục Mask để chạy Batch Inpainting!")
+        if algo_key in ["inpainting", "combined"] and (not mask_d or mask_d == "Chưa chọn..."):
+            QMessageBox.warning(self, "Lỗi", f"Vui lòng chọn thư mục Mask để chạy Batch {algo_key.title()}!")
             return
 
-        kwargs = {"kernel_size": 5, "sigma": 1.2} if algo_key == "gaussian" else {"radius": 3, "method": "telea"}
+        # Lấy trực tiếp tham số từ giao diện GUI thay vì hardcode
+        ksize = self.spin_kernel.value()
+        if ksize % 2 == 0:
+            ksize += 1
+
+        kwargs = {
+            "kernel_size": ksize,
+            "sigma": self.spin_sigma.value(),
+            "radius": self.spin_radius.value(),
+            "method": self.combo_inpaint_method.currentText().lower()
+        }
         
         self.thread = BatchWorkerThread(
             self.pipeline, in_d, out_d, algo_key, kwargs, mask_dir=mask_d
