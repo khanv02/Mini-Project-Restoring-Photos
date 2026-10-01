@@ -1,59 +1,66 @@
-import os
-import cv2
+"""Qt transport only: all image processing lives in the pipeline."""
+
 from PySide6.QtCore import QThread, Signal
 
-class BatchWorkerThread(QThread):
-    # Signals truyền dữ liệu về GUI
-    progress_changed = Signal(int, int)  # (current, total)
-    file_processed = Signal(str)          # filename
-    finished_all = Signal()
 
-    def __init__(self, pipeline, input_dir: str, output_dir: str, algo_name: str, kwargs: dict, mask_dir: str = None):
-        super().__init__()
+class BatchWorkerThread(QThread):
+    progress_changed = Signal(int, int)
+    file_processed = Signal(str)
+    file_failed = Signal(str, str)
+    result_ready = Signal(object)
+    completed = Signal(object)
+    failed = Signal(str)
+    finished_all = Signal()  # Compatibility with previous callers.
+
+    def __init__(self, pipeline, input_dir: str, output_dir: str,
+                 algo_name: str, kwargs: dict, mask_dir: str | None = None, parent=None,
+                 clean_dir: str | None = None):
+        super().__init__(parent)
         self.pipeline = pipeline
         self.input_dir = input_dir
         self.output_dir = output_dir
         self.mask_dir = mask_dir
+        self.clean_dir = clean_dir
         self.algo_name = algo_name
-        self.kwargs = kwargs
-        self._is_running = True
+        self.kwargs = kwargs.copy()
 
     def stop(self):
-        self._is_running = False
+        self.requestInterruption()
 
     def run(self):
-        if not os.path.exists(self.output_dir):
-            os.makedirs(self.output_dir)
+        try:
+            result = self.pipeline.run_batch(
+                self.input_dir, self.output_dir, self.algo_name,
+                mask_dir=self.mask_dir, progress_callback=self.progress_changed.emit,
+                file_callback=self.file_processed.emit, error_callback=self.file_failed.emit,
+                clean_dir=self.clean_dir, result_callback=self.result_ready.emit,
+                should_stop=self.isInterruptionRequested, **self.kwargs,
+            )
+        except Exception as exc:
+            self.failed.emit(str(exc))
+        else:
+            self.completed.emit(result)
+        finally:
+            self.finished_all.emit()
 
-        valid_exts = ('.jpg', '.jpeg', '.png', '.bmp')
-        files = [f for f in os.listdir(self.input_dir) if f.lower().endswith(valid_exts)]
-        total = len(files)
 
-        for idx, filename in enumerate(files):
-            if not self._is_running:
-                break
-            
-            img_path = os.path.join(self.input_dir, filename)
-            corrupted = cv2.imread(img_path)
-            
-            if corrupted is not None:
-                task_kwargs = self.kwargs.copy()
-                
-                # Nạp ảnh Mask cho cả 'inpainting' VÀ 'combined'
-                if self.algo_name in ["inpainting", "combined"] and self.mask_dir:
-                    mask_path = os.path.join(self.mask_dir, filename)
-                    if os.path.exists(mask_path):
-                        task_kwargs["mask"] = cv2.imread(mask_path)
-                    else:
-                        print(f"⚠️ Cảnh báo: Không tìm thấy mask tương ứng cho {filename}")
-                        continue
+class TaskWorkerThread(QThread):
+    """Run one Single/Compare task; results are delivered on the GUI thread."""
 
-                restored = self.pipeline.run_single(self.algo_name, corrupted, **task_kwargs)
-                if restored is not None:
-                    save_path = os.path.join(self.output_dir, f"restored_{filename}")
-                    cv2.imwrite(save_path, restored)
+    completed = Signal(object)
+    failed = Signal(str)
 
-            self.progress_changed.emit(idx + 1, total)
-            self.file_processed.emit(filename)
+    def __init__(self, task, parent=None):
+        super().__init__(parent)
+        self.task = task
 
-        self.finished_all.emit()
+    def stop(self):
+        self.requestInterruption()
+
+    def run(self):
+        try:
+            result = self.task()
+            if not self.isInterruptionRequested():
+                self.completed.emit(result)
+        except Exception as exc:
+            self.failed.emit(str(exc))

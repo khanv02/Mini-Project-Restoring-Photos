@@ -1,7 +1,12 @@
 dataset/images_corrupted/
 dataset/images_masks/
+dataset/generated/
 .github/
 .specify/
 .venv/
 output/
 **/__pycache__/
+AGENTS.md
+PREVIEW.md
+PROJECT_REVIEW.md
+TEST_REPORT.md

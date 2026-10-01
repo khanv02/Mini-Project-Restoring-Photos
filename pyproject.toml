@@ -1,7 +1,7 @@
 [project]
 name = "project-1"
 version = "0.1.0"
-description = "Add your description here"
+description = "Desktop photo restoration with Gaussian filtering, inpainting and quality comparison"
 readme = "README.md"
 authors = [
     { name = "khanv02", email = "189113800+khanv02@users.noreply.github.com" }
