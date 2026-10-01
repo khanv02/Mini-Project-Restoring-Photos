@@ -9,6 +9,7 @@ from project_1.algorithms.scratch_mask import (
     DEFAULT_MASK_PARAMETERS, detect_scratch_mask, mask_overlay, mask_summary, validate_binary_mask,
 )
 from project_1.gui.threads import TaskWorkerThread
+from project_1.gui.theme import apply_workspace_theme
 from project_1.gui.widgets import ImagePanel, SliderControl
 
 
@@ -17,15 +18,19 @@ class MaskDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Gợi ý mask — vết xước sáng (thử nghiệm)")
         self.resize(1000, 730)
+        apply_workspace_theme(self)
         self.image = image.copy()
         self.candidate = None
         self.candidate_parameters = None
         self.thread = None
         self._closing = False
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 18, 20, 16)
+        layout.setSpacing(12)
         hint = QLabel("Chỉ tìm vết xước sáng, mảnh; có thể nhầm chi tiết sáng hoặc bỏ sót xước. "
                       "Không phát hiện vết ố/xước tối. Kiểm tra lớp phủ đỏ trước khi áp dụng.")
         hint.setWordWrap(True)
+        hint.setObjectName("muted")
         layout.addWidget(hint)
         form = QFormLayout()
         self.controls = {
@@ -47,18 +52,22 @@ class MaskDialog(QDialog):
         views.addWidget(self.binary_panel)
         views.addWidget(self.overlay_panel)
         layout.addLayout(views, 1)
-        self.status = QLabel("Bấm Tạo mask để xem gợi ý; mask đang dùng chưa bị thay đổi.")
+        self.status = QLabel("Bấm Tạo gợi ý để xem mask; mask đang dùng chưa bị thay đổi.")
+        self.status.setObjectName("resultStatus")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         actions = QHBoxLayout()
-        self.generate_button = QPushButton("Tạo / tạo lại mask")
+        self.generate_button = QPushButton("Tạo gợi ý")
         self.apply_button = QPushButton("Áp dụng mask")
+        self.apply_button.setProperty("primary", True)
         self.apply_button.setEnabled(False)
         self.cancel_button = QPushButton("Hủy")
         self.generate_button.clicked.connect(self.generate)
         self.apply_button.clicked.connect(self.accept)
         self.cancel_button.clicked.connect(self.reject)
-        for button in (self.generate_button, self.apply_button, self.cancel_button):
+        actions.addWidget(self.generate_button)
+        actions.addStretch()
+        for button in (self.cancel_button, self.apply_button):
             actions.addWidget(button)
         layout.addLayout(actions)
 
@@ -101,6 +110,7 @@ class MaskDialog(QDialog):
             self._failed(str(exc))
             return
         self.candidate, self.candidate_parameters = mask.copy(), parameters.copy()
+        self.generate_button.setText("Tạo lại gợi ý")
         self.binary_panel.set_image(mask)
         self.overlay_panel.set_image(overlay)
         text = (f"{summary['regions']} vùng; {summary['pixels']} pixel; "

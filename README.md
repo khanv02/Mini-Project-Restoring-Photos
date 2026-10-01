@@ -22,6 +22,7 @@ Project tập trung vào **ảnh tĩnh** với ba chế độ: khôi phục đơ
 
 - Gaussian Filter giảm nhiễu; Inpainting hỗ trợ Telea/Navier–Stokes; Combined kết hợp hai bước.
 - Hiển thị ảnh trước–sau, lưu ảnh và xuất báo cáo CSV.
+- Zoom tại con trỏ bằng con lăn, kéo ảnh bằng chuột và xem tỷ lệ 1:1.
 - Thanh kéo kèm ô nhập số để chỉnh thông số chính xác.
 - Tăng nét tùy chọn sau phục hồi, mặc định tắt.
 - Gợi ý mask vết xước sáng, xem lớp phủ và xác nhận trước khi sử dụng.
@@ -70,6 +71,7 @@ Project-1/
 │       │   ├── main_window.py    # Các luồng Single/Compare/Batch
 │       │   ├── widgets.py        # Viewer và control thanh kéo dùng chung
 │       │   ├── mask_dialog.py    # Xem và xác nhận mask gợi ý
+│       │   ├── theme.py          # Giao diện sáng, màu nhấn và kiểu control
 │       │   └── threads.py        # Worker Qt
 │       ├── metrics/
 │       │   ├── evaluator.py      # PSNR/SSIM ảnh phục hồi
@@ -159,20 +161,42 @@ Quy ước đầu vào:
 
 ### Single và Compare
 
-1. Mở ảnh hỏng trước; nạp ảnh sạch tham chiếu nếu muốn tính metric.
+1. Bấm **Mở ảnh hỏng…** (Ctrl+O); trong **Tùy chọn ảnh**, nạp ảnh sạch tham chiếu nếu muốn tính metric.
 2. Chọn Gaussian, Inpainting hoặc Combined. Hai phương pháp sau cần mask.
-3. Nạp mask có sẵn hoặc dùng hộp thoại gợi ý mask.
-4. Chỉnh thông số, bấm Khôi phục hoặc So sánh, xem ảnh và lưu kết quả.
+3. Trong **Tùy chọn ảnh**, nạp mask có sẵn hoặc chọn **Gợi ý mask xước sáng…**.
+4. Chỉnh thông số, bấm Khôi phục hoặc So sánh; lưu ảnh qua menu **Lưu kết quả** (Single) hoặc **Xuất kết quả** (Compare).
+
+Sidebar chỉ giữ hai thao tác đầu vào; menu **Tùy chọn ảnh** còn có lưu mask, bỏ tham chiếu/mask và nạp bộ ảnh mẫu. Menu **Xuất kết quả** gom lưu ảnh phương pháp đã chọn và xuất CSV. Các thao tác chỉ được bật khi có đầu vào/kết quả phù hợp; khi đang xử lý, các thao tác thay dữ liệu bị khóa. Cấu hình tăng nét chỉ hiện khi bật tùy chọn này.
 
 Thanh kéo và ô nhập số luôn đồng bộ. Nhập số rồi Enter/chuyển focus để xác nhận; kernel chẵn được đưa lên số lẻ kế tiếp. **Chỉnh thông số không tự chạy xử lý.** Compare dùng cùng cấu hình cho ba phương pháp; thiếu mask thì bỏ qua Inpainting/Combined. Chọn dòng kết quả để lưu ảnh hoặc xuất CSV.
 
 Đổi ảnh hỏng xóa reference, mask và kết quả cũ. Không có reference vẫn phục hồi được, nhưng chỉ đánh giá trực quan.
 
+### Đối chiếu ảnh rõ hơn
+
+Compare mặc định dùng **hai ảnh lớn**, không chia nhỏ thành bốn ô. Chọn ảnh bên trái (ảnh hỏng, tham chiếu hoặc một kết quả) và phương pháp bên phải để so sánh trước/sau, hai thuật toán hoặc kết quả với ảnh sạch. Đổi lựa chọn chỉ đổi cách xem, không chạy lại xử lý. Chọn dòng trong bảng cũng chọn phương pháp bên phải; ảnh được lưu là phương pháp đang chọn đó.
+
+Menu **Hiển thị → Tổng quan 4 ảnh** giữ chế độ lưới cũ. Có thể ẩn bảng chỉ số hoặc kéo thanh chia giữa bảng và ảnh để tăng không gian; nút **Ẩn cấu hình** thu gọn sidebar, **Hiện cấu hình** mở lại. Các dropdown dùng chữ trắng trên nền xanh cho mục đang chọn.
+
+### Phóng to và di chuyển ảnh
+
+Mọi vùng xem ảnh trong Single, Compare, Batch và hộp thoại mask hỗ trợ:
+
+- **Cuộn chuột** để phóng to/thu nhỏ tại vị trí con trỏ; hỗ trợ cả trackpad.
+- **Giữ chuột trái và kéo** để di chuyển ảnh đã phóng to. Ảnh nhỏ hơn khung được giữ giữa; không kéo ảnh mất khỏi vùng xem.
+- **Nhấp đúp** hoặc chọn **Vừa khung** trong menu tỷ lệ dưới ảnh để xem lại toàn ảnh.
+- Chọn **1:1 — 100%** trong menu tỷ lệ (hoặc menu chuột phải trên ảnh); tỷ lệ zoom hiện dưới ảnh, theo đơn vị hiển thị Qt nên có thể khác pixel vật lý trên màn hình HiDPI.
+- Chọn **Lấp khung (cắt viền)** để phủ khung mà vẫn giữ đúng tỷ lệ. Phần ngoài khung bị che khi xem; không bị cắt khỏi file lưu. **Vừa khung** hiển thị toàn ảnh, có thể có khoảng trống nếu tỷ lệ ảnh khác khung.
+
+**Đồng bộ zoom/kéo** mặc định bật ở Single/Compare/Batch: thao tác trên một ảnh áp dụng cùng tỷ lệ và tâm nhìn cho ảnh cùng kích thước, trong giới hạn khung. Tắt để xem độc lập; hai panel trong hộp thoại mask vẫn độc lập. Single giữ góc nhìn của ảnh hỏng khi kết quả mới xuất hiện; Compare giữ góc nhìn khi đổi phương pháp. Nạp ảnh hỏng mới hoặc chọn file Batch khác đặt lại vừa khung.
+
+Resize cửa sổ tự căn lại ở chế độ vừa khung, giữ tỷ lệ khi đang zoom thủ công. Zoom tối đa 3200%, tối thiểu 1% hoặc nhỏ hơn nếu cần để vừa ảnh lớn. Zoom chỉ thay cách hiển thị, không tăng độ phân giải hay thay đổi pixel ảnh/mask, metric hoặc file lưu. Kéo ảnh không phải thao tác vẽ/chỉnh mask.
+
 ### Tăng nét và gợi ý mask
 
 Bật **Tăng nét sau phục hồi** để áp dụng cho Single/Compare/Batch; mặc định tắt. Mức 0 giữ nguyên kết quả trước tăng nét. Tăng nét có thể làm nổi nhiễu/tạo viền, không bảo đảm PSNR/SSIM tăng.
 
-Trong Single/Compare, bấm **Gợi ý mask xước sáng… → Tạo / tạo lại mask**. Xem mask trắng/đen, overlay đỏ và thống kê, rồi bấm **Áp dụng mask**. Đổi thông số phải tạo lại; mask rỗng không được áp dụng; Hủy giữ mask cũ. Có thể lưu mask đã xác nhận thành PNG.
+Trong Single/Compare, chọn **Tùy chọn ảnh → Gợi ý mask xước sáng… → Tạo gợi ý**. Xem mask trắng/đen, overlay đỏ và thống kê, rồi bấm **Áp dụng mask**. Đổi thông số phải tạo lại; mask rỗng không được áp dụng; Hủy giữ mask cũ. Có thể lưu mask đã xác nhận thành PNG từ menu **Tùy chọn ảnh**.
 
 Detector chỉ gợi ý xước **sáng, mảnh**, không dùng ảnh sạch. Có thể nhận nhầm chi tiết sáng và bỏ sót xước; không tìm vết ố/xước tối. Diện tích vượt 10% sẽ cảnh báo, không phải kết luận mask đúng/sai.
 
@@ -183,6 +207,10 @@ Chọn thư mục ảnh hỏng, clean tùy chọn, mask nếu cần và output; 
 Các tác vụ chạy nền và khóa điều khiển thay đầu vào/cấu hình. Hủy Batch dừng sau file hiện tại, giữ kết quả đã hoàn thành. File đọc lỗi hoặc thiếu mask được ghi nhận và không chặn ảnh khác; reference lỗi vẫn cho lưu kết quả nhưng không tính điểm. Đóng khi đang xử lý sẽ hỏi dừng và chờ worker.
 
 Mỗi lượt Batch tạo thư mục riêng chứa PNG, `details.csv` và `summary.csv`; không ghi đè lượt cũ. Chọn dòng trong bảng để xem trước/sau.
+
+Danh sách file nằm bên trái, hai ảnh lớn nằm bên phải. Form thư mục tự thu gọn khi bắt đầu; bấm **Thư mục** để mở lại, hoặc form tự mở khi Batch thất bại. Có thể xem file đã xử lý ngay khi Batch còn chạy; hoàn tất không đổi dòng bạn đang xem. Chọn file khác sẽ reset zoom để không lẫn góc nhìn của ảnh trước.
+
+Mặc định danh sách chỉ hiện tên và trạng thái để ưu tiên ảnh. Metric của file chọn hiện dưới ảnh; tooltip có thông tin đầy đủ. Bỏ chọn **Hiển thị → Danh sách file gọn** để xem mọi cột, kéo thanh chia ngang để tăng chiều rộng bảng. Đường dẫn đầy đủ của thư mục kết quả nằm trong tooltip trạng thái Batch.
 
 <a id="thuat-toan"></a>
 
@@ -245,6 +273,10 @@ uv run python tools/generate_previews.py --dataset dataset/generated/demo
 Validation tạo lượt mới trong `output/`; không sửa dataset. Dataset mới sinh có thể khác dữ liệu của các lượt thực nghiệm cũ, vì vậy không kỳ vọng số liệu luôn trùng nhau.
 
 Trong lần kiểm chứng **01/10/2026**, 70/70 test đạt trên mã nguồn và cùng 70 test đạt khi import từ wheel; 680 ảnh phục hồi đã lưu được kiểm chứng metric. Đây là kết quả của lượt kiểm tra đó, không phải số test cố định hay bảo đảm trên mọi máy/dữ liệu.
+
+Sau khi bổ sung zoom/kéo ảnh và tinh gọn GUI, **91/91 test trên mã nguồn đạt**, tiến trình thoát bình thường. Có 12 test viewer và 9 test bố cục/menu mới; đã kiểm tra launcher mở/đóng và xác nhận mask liên tiếp 5 lần trong event loop offscreen. Wheel chưa được kiểm thử lại cho thay đổi GUI này.
+
+Lượt cải thiện đối chiếu ảnh **02/10/2026** đạt **107/107 test trên mã nguồn**, gồm 16 test mới cho bố cục ảnh lớn, đồng bộ góc nhìn, lựa chọn phương pháp/lưu ảnh, kiểm tra Batch và tương phản dropdown. Các kiểm tra GUI dùng Qt offscreen; preview được chụp từ luồng xử lý thực tế, không phải mockup.
 
 Kiểm tra cú pháp và build package:
 

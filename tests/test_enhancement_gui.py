@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import cv2
 import numpy as np
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QAbstractSpinBox, QDialog
 
@@ -26,6 +26,9 @@ class EnhancementGuiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
+        # Match the actual desktop launcher.
+        if cls.app.style().objectName().lower() != "fusion":
+            cls.app.setStyle("Fusion")
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -51,6 +54,8 @@ class EnhancementGuiTests(unittest.TestCase):
             self.window.thread.wait()
             self.app.processEvents()
         self.window.close()
+        self.window.deleteLater()
+        self.app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.app.processEvents()
 
     def wait_for_worker(self, owner):
@@ -197,18 +202,18 @@ class EnhancementGuiTests(unittest.TestCase):
         self.assertIsNone(w.mask_img)
         self.assertIsNone(w.mask_parameters)
         self.assertEqual(w.mask_source, "")
-        self.assertFalse(w.save_mask_button.isEnabled())
+        self.assertFalse(w.save_mask_action.isEnabled())
 
     def test_auto_mask_is_unavailable_in_batch(self):
         w = self.window
-        self.assertTrue(w.auto_mask_button.isEnabled())
+        self.assertTrue(w.auto_mask_action.isEnabled())
         w.tabs.setCurrentIndex(2)
-        self.assertFalse(w.auto_mask_button.isEnabled())
-        self.assertFalse(w.save_mask_button.isEnabled())
+        self.assertFalse(w.auto_mask_action.isEnabled())
+        self.assertFalse(w.save_mask_action.isEnabled())
         w._suggest_mask()
         self.assertIsNone(w.mask_dialog)
         w.tabs.setCurrentIndex(1)
-        self.assertTrue(w.auto_mask_button.isEnabled())
+        self.assertTrue(w.auto_mask_action.isEnabled())
 
     def test_cancel_running_mask_worker_waits_safely(self):
         dialog = self.dialog()

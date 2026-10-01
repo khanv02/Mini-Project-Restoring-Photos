@@ -13,7 +13,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import numpy as np
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QEvent, QTimer
 from PySide6.QtGui import QFont, QFontDatabase, QFontMetrics, QImage
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox, QScrollArea
@@ -206,6 +206,9 @@ def generate(dataset, output, batch_limit=8):
                 window.thread.wait()
                 app.processEvents()
             window.close()
+            window.deleteLater()
+            # There is no persistent app.exec() loop here to deliver deferred deletes.
+            app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
             app.processEvents()
 
 

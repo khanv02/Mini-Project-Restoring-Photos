@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QEvent, QTimer
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
@@ -25,6 +25,8 @@ class GuiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
+        if cls.app.style().objectName().lower() != "fusion":
+            cls.app.setStyle("Fusion")
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -53,6 +55,8 @@ class GuiTests(unittest.TestCase):
             self.window.thread.wait()
             self.app.processEvents()
         self.window.close()
+        self.window.deleteLater()
+        self.app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.app.processEvents()
 
     def wait_for_task(self):
@@ -60,7 +64,7 @@ class GuiTests(unittest.TestCase):
         while self.window.thread is not None and time.monotonic() < deadline:
             QTest.qWait(10)
         self.assertIsNone(self.window.thread, "worker did not finish")
-        self.assertTrue(self.window.run_button.isEnabled())
+        self.assertTrue(self.window.controls.isEnabled())
 
     def test_single_background_and_input_invalidates_results(self):
         w = self.window
