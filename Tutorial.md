@@ -1,6 +1,6 @@
 # Tutorial — khôi phục ảnh và đọc kết quả
 
-Tài liệu này hướng dẫn nhanh cho người dùng và Dev kiểm tra luồng khôi phục ảnh trong Project 1. Phần mô tả kỹ thuật, kiến trúc và bằng chứng chạy thật nằm trong [Project_Preview.md](Project_Preview.md).
+Tài liệu này hướng dẫn nhanh cho người dùng và Dev kiểm tra luồng khôi phục ảnh trong Project 1.
 
 ## 1. Cài đặt và mở ứng dụng
 
