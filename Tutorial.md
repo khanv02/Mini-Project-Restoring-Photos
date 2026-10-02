@@ -1,98 +1,107 @@
-# Hướng dẫn dùng project khôi phục ảnh
+# Tutorial — khôi phục ảnh và đọc kết quả
 
-Làm từ nhẹ đến mạnh: **mở ảnh → chọn cách sửa → chỉnh thông số → xem trước/sau → lưu PNG**.
+Tài liệu này hướng dẫn nhanh cho người dùng và Dev kiểm tra luồng khôi phục ảnh trong Project 1. Phần mô tả kỹ thuật, kiến trúc và bằng chứng chạy thật nằm trong [Project_Preview.md](Project_Preview.md).
 
-## 1. Mở ứng dụng
+## 1. Cài đặt và mở ứng dụng
 
-Cần **Python 3.14+ và uv**. Nếu chưa có uv, cài bằng `winget install --id=astral-sh.uv -e`, rồi mở lại terminal.
-
-Mở PowerShell tại thư mục project, nơi có `pyproject.toml`:
+Yêu cầu Python 3.14+ và `uv`.
 
 ```powershell
-uv python install 3.14
 uv sync --locked
+uv run python -m project_1
+```
+
+Có thể chạy bằng entrypoint tương đương:
+
+```powershell
 uv run project-1
 ```
 
-## 2. Làm sạch một bức ảnh
+Nếu chưa có dữ liệu demo, tạo từ ảnh sạch trong `dataset/images_clean/`:
 
-1. Bấm **Mở ảnh hỏng…** hoặc **Ctrl+O**. Hỗ trợ PNG, JPG/JPEG, BMP; giữ một bản gốc riêng.
-2. Chọn phương pháp trong **Thuật toán & tham số** theo bảng dưới.
-3. Nếu dùng Inpainting/Combined, nạp mask qua **Tùy chọn ảnh → Mở mask từ file…**, hoặc dùng gợi ý mask ở mục 5.
-4. Chỉnh thông số, mở tab **Khôi phục đơn**, bấm **Khôi phục ảnh**. Đổi thông số phải bấm chạy lại.
-5. Xem trước/sau: cuộn chuột để zoom, giữ chuột trái để kéo; xem ở **1:1 — 100%** để kiểm tra tóc, chữ, mắt và cạnh vật thể.
-6. Chọn **Lưu kết quả → Lưu ảnh khôi phục…**, lưu thành PNG với tên mới.
+```powershell
+uv run python -m project_1.generate_data --output dataset/generated/demo --seed 42
+uv run project-1 --demo --dataset-dir dataset/generated/demo
+```
 
-| Ảnh gặp vấn đề gì? | Chọn gì? | Cần mask? |
-| --- | --- | --- |
-| Có nhiễu hạt, không có xước | **Gaussian Filter**: làm mịn toàn ảnh | Không |
-| Có xước/vùng hỏng nhỏ, ít nhiễu | **Inpainting**: sửa vùng được đánh dấu | Có |
-| Vừa xước vừa nhiễu | **Combined**: sửa xước trước, làm mịn sau | Có |
+## 2. Khôi phục một ảnh
 
-Không có ảnh sạch vẫn sửa được. Chỉ nạp **ảnh tham chiếu đúng cặp** khi muốn xem PSNR/SSIM; không dùng ảnh hỏng làm tham chiếu.
+1. Vào tab **Single**, bấm **Mở ảnh hỏng…** hoặc chọn **Tùy chọn ảnh → Nạp bộ ảnh mẫu**.
+2. Nạp ảnh sạch trong mục tham chiếu nếu muốn tính PSNR/SSIM.
+3. Chọn **Gaussian**, **Inpainting** hoặc **Combined**. Inpainting và Combined cần mask.
+4. Nạp mask có sẵn hoặc mở **Tùy chọn ảnh → Gợi ý mask xước sáng…** để tạo, xem overlay và bấm **Áp dụng mask**.
+5. Chỉnh thông số rồi bấm **Khôi phục**. Kết quả xuất hiện ở panel bên phải.
 
-![Cùng ảnh hỏng: trước xử lý, Inpainting và Combined](assets/tutorial/01_phuc_hoi.png)
+Ảnh sạch chỉ dùng làm tham chiếu đánh giá, không tham gia phục hồi. Nếu thiếu ảnh sạch, ứng dụng vẫn khôi phục được nhưng không hiển thị PSNR/SSIM.
 
-*Ví dụ xử lý thật trên ảnh `101085.png`. Xước giảm sau Inpainting; Combined giảm thêm nhiễu. Vùng hỏng lớn vẫn có thể để lộ mảng vá, như ở góc trên bên trái.*
+## 3. Preview nhanh khi kéo thanh chỉ số
 
-## 3. Kernel và Sigma: hiểu đơn giản
+Sau lần chạy đầu tiên, thay đổi thanh kéo trong Single hoặc Compare có hai giai đoạn:
 
-- **Kernel** là kích thước vùng pixel được xét. Kernel 3 nghĩa là vùng **3 × 3 pixel**. Dùng số lẻ: 3, 5, 7…
-- **Sigma** quyết định mức ảnh hưởng của các pixel xa tâm: sigma nhỏ tập trung gần tâm; sigma lớn cho các pixel xa hơn nhiều ảnh hưởng hơn.
+- **Đang kéo:** ứng dụng thu nhỏ ảnh và mask tối đa còn 160 pixel ở cạnh dài, chạy pipeline trên ảnh nhỏ và hiển thị lại ảnh. PSNR/SSIM ở giai đoạn này được ghi rõ là **ước lượng**, giúp phản hồi nhanh.
+- **Thả chuột:** ứng dụng chạy lại trên ảnh gốc ở độ phân giải đầy đủ và thay bằng PSNR/SSIM **chính xác**. Chỉ kết quả chính xác mới được lưu hoặc xuất CSV.
 
-**Không chọn theo phép so sánh “Kernel phải lớn/nhỏ hơn Sigma”.** Hai số diễn tả hai đặc tính khác nhau. Kernel giới hạn vùng xét; sigma quyết định trọng số bên trong vùng đó. Đây là cách Gaussian hoạt động trong [OpenCV](https://docs.opencv.org/4.x/d4/d13/tutorial_py_filtering.html).
+Preview dùng cơ chế latest-value-wins: nếu kéo tiếp khi một lượt preview đang chạy, kết quả cũ không được phép ghi đè giá trị mới nhất. Bộ nhớ đệm baseline trong Compare tránh tính lại metric của ảnh hỏng cho từng phương pháp.
 
-| Cách đặt | Điều gì xảy ra? | Nên làm gì? |
-| --- | --- | --- |
-| **Kernel rất lớn, sigma nhỏ**, ví dụ 31 / 1 | Pixel xa tâm có trọng số gần 0. So với 7 / 1, ảnh có thể gần như không đổi; chủ yếu tăng phần tính toán | Giữ kernel vừa đủ; tăng kernel không bảo đảm sạch hơn |
-| **Kernel nhỏ, sigma rất lớn**, ví dụ 3 / 5 | Vùng xét vẫn chỉ 3 × 3; trọng số gần đều nhau, giống lấy trung bình trong vùng nhỏ | Nếu cần lọc rộng hơn, phải xem xét cả kernel; không chỉ tăng sigma mãi |
-| **Cả hai cùng lớn**, ví dụ 31 / 5 | Làm mịn mạnh, dễ mất mắt, chữ, tóc và texture | Giảm sigma và kernel khi chi tiết bắt đầu nhòe |
+Nếu cần số liệu tin cậy, luôn chờ trạng thái preview chính xác hoàn tất trước khi kết luận thông số nào tốt hơn.
 
-![So sánh trực quan các cặp kernel và sigma trên cùng một ảnh](assets/tutorial/02_kernel_sigma.png)
+![Preview nhanh khi kéo thanh](assets/tutorial/01_phuc_hoi.png)
 
-*So B với C: chỉ tăng kernel, giữ sigma 1; trong ví dụ này hai kết quả trùng pixel. So với E: tăng cả hai làm mất chi tiết rõ rệt. Nhiễu trong hình này được thêm có kiểm soát để dễ so sánh.*
+## 4. Chọn thông số Gaussian
 
-## 4. Cấu hình nên thử trước
+- **Kernel:** tăng để làm mượt nhiễu mạnh hơn nhưng dễ mất chi tiết. Giảm khi ảnh bị bệt hoặc cạnh bị nhòe.
+- **Sigma:** tăng để giảm nhiễu mạnh hơn; giảm khi cần giữ texture và cạnh.
+- Kernel phải là số lẻ. Ô nhập số và thanh kéo được đồng bộ; giá trị chẵn sẽ được đưa lên số lẻ kế tiếp.
 
-Đây là **cấu hình thử ban đầu**, không phải bộ thông số tối ưu cho mọi ảnh:
+Nếu có ảnh sạch, hãy chạy xong ảnh đầy đủ rồi đọc PSNR/SSIM. PSNR phản ánh sai khác pixel; SSIM phản ánh cấu trúc và độ tương đồng nhìn thấy. Không nên chọn một tham số chỉ vì một metric tăng khi metric còn lại giảm.
 
-| Trường hợp | Cấu hình bắt đầu |
+![So sánh kernel và sigma](assets/tutorial/02_kernel_sigma.png)
+
+## 5. Inpainting, Combined và tăng nét
+
+- **Bán kính Inpainting:** tăng khi vùng hỏng rộng hoặc cần lấy ngữ cảnh xa hơn; giảm khi chỉ cần sửa vết mảnh để tránh lan ảnh.
+- **Telea:** thường phù hợp vết mảnh và nhanh.
+- **Navier–Stokes:** là lựa chọn thay thế khi muốn so sánh cách lan truyền khác.
+- **Combined:** inpainting trước, Gaussian sau; phù hợp khi vừa có vùng mất dữ liệu vừa có nhiễu.
+- **Tăng nét sau phục hồi:** chỉ bật khi ảnh đầu ra bị mềm. Mức quá cao có thể làm nổi nhiễu hoặc tạo viền, vì vậy mặc định đang tắt.
+
+![Mask cho Inpainting](assets/tutorial/03_mask.png)
+
+## 6. Đọc và dùng gợi ý tham số
+
+Trong nhóm **03 · Gợi ý tham số**, bấm **Phân tích & gợi ý** sau khi có ảnh và cấu hình hiện tại.
+
+- Có ảnh sạch: hệ thống thử các giá trị lân cận hợp lệ của kernel, sigma, bán kính, phương pháp inpainting và tăng nét. Gợi ý chính chỉ xuất hiện khi PSNR và SSIM cùng tăng qua ngưỡng tối thiểu; nếu hai metric trái chiều, giao diện hiển thị đánh đổi để Dev tự quyết định.
+- Không có ảnh sạch: hệ thống dùng heuristic từ mức nhiễu, độ mạnh cạnh và tỷ lệ mask. Kết quả có mức tin cậy thấp và chỉ mang tính định hướng.
+- Hệ thống không tự thay đổi tham số. Gợi ý là một phép đánh giá có thể kiểm tra lại, không phải nhãn đúng tuyệt đối cho mọi ảnh.
+
+Quy tắc đọc nhanh:
+
+| Dấu hiệu | Hướng thử trước |
 | --- | --- |
-| Nhiễu nhẹ | Gaussian: **kernel 3, sigma 0,8** |
-| Xước mảnh | Inpainting: **Telea, radius 3**, mask đúng |
-| Xước + nhiễu | Combined: **Telea, radius 3, kernel 3, sigma 0,8** |
+| Nhiễu hạt còn nhiều | Tăng kernel hoặc sigma từng bước nhỏ |
+| Cạnh/texture bị nhòe | Giảm kernel hoặc sigma |
+| Vết hỏng chưa được lấp | Kiểm tra mask, sau đó thử tăng bán kính 1 bước |
+| Ảnh bị bệt sau Combined | Giảm Gaussian sau inpainting hoặc tắt tăng nét |
+| Ảnh mềm nhưng sạch | Bật tăng nét ở mức thấp rồi kiểm tra halo |
 
-Nếu còn nhiễu, thử sigma **1,0**, rồi **1,2**; có thể thử kernel **5**. Mỗi lần chỉ đổi một thông số và xem lại chi tiết. Với Inpainting, nếu mối nối chưa đẹp, thử radius **2** hoặc **5**, hoặc đổi sang Navier–Stokes.
+## 7. Compare và Batch
 
-Để **Tăng nét sau phục hồi** tắt lúc đầu. Khi ảnh đã sạch nhưng hơi mềm, thử mức **0,2–0,3**, sigma tăng nét **1,0**. Nếu có viền sáng/tối hoặc nhiễu nổi lên, giảm mức tăng nét hoặc tắt.
+Trong **Compare**, bấm **So sánh** để chạy ba phương pháp với cùng cấu hình. Chọn một dòng trong bảng để xem ảnh và lưu phương pháp tương ứng. Khi thiếu mask, Inpainting và Combined được bỏ qua theo trạng thái hiển thị.
 
-## 5. Mask: chọn đúng vùng cần sửa
+Trong **Batch**, chọn thư mục ảnh hỏng, clean tùy chọn, mask nếu cần và thư mục output. Batch chạy nền, có tiến độ và có thể hủy sau file hiện tại. Kết quả gồm PNG, `details.csv` và `summary.csv`; các lượt chạy được đặt trong thư mục riêng.
 
-Mask là một ảnh đánh dấu vị trí hỏng:
+## 8. Phóng to, lưu và xử lý lỗi
 
-- **Trắng 255**: vùng cần sửa. **Đen 0**: vùng giữ nguyên ở bước Inpainting.
-- Mask phải **cùng kích thước và đúng vị trí** với ảnh hỏng; nên lưu PNG đen/trắng.
-- Chỉ đánh dấu vết hỏng, không tô rộng vào mắt, chữ hay chi tiết còn tốt. Không dùng mask 0/1 thay cho 0/255.
+- Cuộn chuột để zoom tại con trỏ, kéo chuột trái để pan, nhấp đúp để vừa khung và chọn `1:1` để xem pixel.
+- Khi preview còn là **ước lượng**, nút lưu/xuất bị khóa. Chờ preview đầy đủ.
+- Ảnh và mask phải cùng kích thước. Mask một kênh dùng trắng `255` cho vùng cần phục hồi và đen `0` cho vùng giữ nguyên.
+- Hỗ trợ PNG, JPG/JPEG và BMP; Batch ghép file theo đúng tên gồm phần mở rộng.
+- Nếu ảnh bị tối/nhòe hoặc điểm thấp, kiểm tra lại mask trước khi tăng mạnh thông số. Detector hiện chỉ nhắm tới xước sáng, mảnh và luôn cần xem overlay trước khi áp dụng.
 
-Để thử tạo mask trong app: **Tùy chọn ảnh → Gợi ý mask xước sáng… → Tạo gợi ý → xem lớp phủ đỏ → Áp dụng mask**. Tính năng này chỉ tìm xước sáng, mảnh; có thể chọn nhầm chi tiết sáng. Không áp dụng nếu vùng đỏ sai.
+Để chạy toàn bộ kiểm thử và tạo lại ảnh preview:
 
-![Mask đúng giữ chi tiết; mask quá rộng làm mất mắt, mũi và miệng](assets/tutorial/03_mask.png)
-
-*Cùng một vết xước mô phỏng, cùng radius 3: chỉ thay mask đã làm kết quả khác hẳn. Màu đỏ là vùng được chọn để sửa.*
-
-Mask đen chỉ bảo vệ pixel ở bước Inpainting. Combined còn lọc Gaussian trên toàn ảnh; tăng nét cũng có thể thay đổi vùng ngoài mask. Kéo chuột trên ảnh là di chuyển vùng xem, không phải vẽ mask.
-
-## 6. Một số lỗi cần nhớ
-
-| Lỗi / biểu hiện | Cách xử lý |
-| --- | --- |
-| Ảnh bệt, mất chi tiết | Giảm sigma; thử kernel nhỏ hơn. Không dùng tăng nét mạnh để bù lọc quá mức |
-| Xước vẫn còn | Kiểm tra mask có phủ đúng vết xước không; Gaussian đơn thuần không thay thế Inpainting |
-| Vùng vá lem hoặc xóa chi tiết tốt | Kiểm tra mask trước, rồi thử thay radius; vùng mất lớn khó phục hồi tự nhiên |
-| Chỉnh số mà ảnh không thay đổi | Nhấn Enter/chuyển focus để xác nhận, rồi bấm **Khôi phục ảnh** lần nữa |
-| Lọc nhiều lượt khiến ảnh càng mềm | Thử mỗi cấu hình từ **cùng ảnh hỏng ban đầu**, tránh nạp kết quả cũ rồi lọc tiếp |
-| Batch bỏ qua ảnh vì thiếu mask | Ghép đúng **tên và phần mở rộng**, ví dụ ảnh `a.png` đi với mask `a.png` |
-
-Muốn so các phương pháp, mở tab **So sánh phương pháp**, bấm **So sánh 3 phương pháp**. Không có mask thì Inpainting/Combined bị bỏ qua. Điểm PSNR/SSIM cao hơn trên cùng tham chiếu là thông tin hữu ích, nhưng vẫn cần nhìn ảnh: **ít nhiễu, còn chi tiết, không có viền hoặc mảng vá mới**.
-
-Với **Xử lý hàng loạt**, chọn thư mục ảnh hỏng, mask nếu cần, tham chiếu tùy chọn và thư mục lưu khác đầu vào. Thử vài ảnh trước khi chạy cả bộ; Batch không tự tạo mask.
+```powershell
+uv run python -m unittest discover -s tests -v
+uv run python tools/generate_previews.py --dataset dataset --output output/previews
+```

@@ -27,6 +27,8 @@ Project tập trung vào **ảnh tĩnh** với ba chế độ: khôi phục đơ
 - Tăng nét tùy chọn sau phục hồi, mặc định tắt.
 - Gợi ý mask vết xước sáng, xem lớp phủ và xác nhận trước khi sử dụng.
 - Tính PSNR/SSIM khi có ảnh sạch tham chiếu tương ứng.
+- Preview nhanh khi kéo thanh chỉ số, sau đó chạy lại exact full-resolution khi thả chuột.
+- Gợi ý tham số có kiểm chứng bằng PSNR/SSIM hoặc heuristic độ tin cậy thấp khi thiếu reference.
 - Xử lý nền, tiến độ và hủy Batch sau file hiện tại.
 
 Bộ dữ liệu dùng trong thực nghiệm hiện có 100 bộ clean–corrupted–mask. Đây là phạm vi phần mềm xử lý ảnh của Subject 2 / Project 1; chưa có xử lý video, báo cáo học phần hoặc video demo nộp bài.
@@ -74,13 +76,15 @@ Project-1/
 │       │   ├── theme.py          # Giao diện sáng, màu nhấn và kiểu control
 │       │   └── threads.py        # Worker Qt
 │       ├── metrics/
-│       │   ├── evaluator.py      # PSNR/SSIM ảnh phục hồi
+│       │   ├── evaluator.py      # PSNR/SSIM exact và preview thu nhỏ
+│       │   ├── advisor.py        # Đánh giá ứng viên và gợi ý tham số
 │       │   └── mask_evaluator.py # Precision/recall/IoU của mask
 │       └── utils/
 │           ├── image_io.py       # I/O, kiểm tra ảnh, đường dẫn Unicode
 │           ├── batch_processor.py
 │           └── reports.py        # CSV chi tiết và tổng hợp
 ├── tests/                        # Kiểm thử unittest core, GUI và preview
+│   └── test_live_preview.py      # Preview nhanh, exact settle và advisor
 ├── tools/
 │   ├── validate_dataset.py       # Kiểm chứng ba phương pháp trên dataset
 │   ├── validate_enhancements.py  # Đánh giá tăng nét và mask holdout
@@ -95,7 +99,9 @@ Project-1/
 ├── uv.lock                       # Lockfile dependencies
 ├── .python-version
 ├── .gitignore
-└── README.md
+├── README.md                    # Điểm vào repository
+├── Tutorial.md                   # Hướng dẫn thao tác
+└── Project_Preview.md            # Review kỹ thuật và visual preview
 ```
 
 Các thư mục dữ liệu sinh và output có thể chưa tồn tại ở bản clone mới. Các file `__init__.py` của subpackage được lược bớt trong sơ đồ.
@@ -109,7 +115,7 @@ Luồng chính: **GUI → RestorationPipeline → thuật toán → ảnh kết 
 Yêu cầu: Python 3.14+ và uv đã được cài. Mở terminal tại thư mục gốc repository:
 
 ```powershell
-uv sync
+uv sync --locked
 uv run project-1
 ```
 
@@ -270,15 +276,11 @@ uv run python tools/generate_previews.py --dataset dataset/generated/demo
 
 - `validate_dataset.py`: chạy ba phương pháp, lưu PNG/CSV và tính lại PSNR/SSIM độc lập trên ảnh đã lưu.
 - `validate_enhancements.py`: so sánh Combined bật/tắt tăng nét; đánh giá mask trên ảnh scratch-only, seed 43, loại 10 ảnh đầu đã dùng calibration. Mặc định cần hơn 10 ảnh sạch. Có precision/recall/IoU, không chấm detector xước bằng mask gộp xước/vết ố.
-- `generate_previews.py`: chụp năm preview từ GUI offscreen, Batch mặc định 8 ảnh; tạo manifest/ZIP, sao lưu preview đích cũ trước khi cập nhật.
+- `generate_previews.py`: chụp bảy preview từ GUI offscreen, gồm live preview và advisor; Batch mặc định 8 ảnh; tạo manifest/ZIP, sao lưu preview đích cũ trước khi cập nhật.
 
 Validation tạo lượt mới trong `output/`; không sửa dataset. Dataset mới sinh có thể khác dữ liệu của các lượt thực nghiệm cũ, vì vậy không kỳ vọng số liệu luôn trùng nhau.
 
-Trong lần kiểm chứng **01/10/2026**, 70/70 test đạt trên mã nguồn và cùng 70 test đạt khi import từ wheel; 680 ảnh phục hồi đã lưu được kiểm chứng metric. Đây là kết quả của lượt kiểm tra đó, không phải số test cố định hay bảo đảm trên mọi máy/dữ liệu.
-
-Sau khi bổ sung zoom/kéo ảnh và tinh gọn GUI, **91/91 test trên mã nguồn đạt**, tiến trình thoát bình thường. Có 12 test viewer và 9 test bố cục/menu mới; đã kiểm tra launcher mở/đóng và xác nhận mask liên tiếp 5 lần trong event loop offscreen. Wheel chưa được kiểm thử lại cho thay đổi GUI này.
-
-Lượt cải thiện đối chiếu ảnh **02/10/2026** đạt **107/107 test trên mã nguồn**, gồm 16 test mới cho bố cục ảnh lớn, đồng bộ góc nhìn, lựa chọn phương pháp/lưu ảnh, kiểm tra Batch và tương phản dropdown. Các kiểm tra GUI dùng Qt offscreen; preview được chụp từ luồng xử lý thực tế, không phải mockup.
+Lượt kiểm tra đầy đủ gần nhất **02/10/2026** đạt **113/113 test trên mã nguồn**, gồm preview nhanh khi kéo, exact settle khi thả, baseline cache trong Compare và advisor. Các kiểm tra GUI dùng Qt offscreen; preview được chụp từ luồng xử lý thực tế, không phải mockup. Wheel chưa được kiểm thử lại cho thay đổi GUI này.
 
 Kiểm tra cú pháp và build package:
 
@@ -326,15 +328,15 @@ print(result["metrics"])  # {"PSNR": ..., "SSIM": ...}
 | Tình huống | Cách kiểm tra |
 | --- | --- |
 | Không nhận lệnh `uv` | Cài uv và bảo đảm lệnh có trong PATH |
-| Sai phiên bản Python / thiếu dependency | Dùng Python 3.14+, chạy `uv sync` rồi chạy qua `uv run` |
+| Sai phiên bản Python / thiếu dependency | Dùng Python 3.14+, chạy `uv sync --locked` rồi chạy qua `uv run` |
 | Demo thiếu ảnh hỏng/mask | Tạo dataset mới và truyền đúng `--dataset-dir` |
 | Generator báo đích đã tồn tại | Chọn tên đích mới hoặc bỏ `--output`; không ghi đè dataset |
 | Inpainting/Combined thiếu mask | Nạp hoặc xác nhận mask; Batch cần thư mục mask tương ứng |
-| Không có PSNR/SSIM | Kiểm tra reference, tên file, kích thước và số kênh; xem cảnh báo metric |
+| Không có PSNR/SSIM | Kiểm tra reference, tên file, kích thước và số kênh; xem cảnh báo metric; chờ exact preview settle |
 | Không mở được cửa sổ GUI | Kiểm tra môi trường desktop và bỏ biến `QT_QPA_PLATFORM=offscreen` nếu đang đặt |
 
 ### Giới hạn và tài liệu bổ sung
 
 Không xử lý video, không có AI/super-resolution hay cọ sửa mask; Batch không tự phát hiện mask. Reference cùng kích thước vẫn có thể sai nội dung; phần mềm không tự căn chỉnh hoặc xác minh cặp ảnh. Chưa kiểm chứng cài sạch trên máy khác, hệ điều hành khác hoặc bản executable.
 
-Các file `PREVIEW.md`, `PROJECT_REVIEW.md`, `TEST_REPORT.md` và `output/` là tài liệu/artifact cục bộ đang bị Git ignore, có thể **không có trong bản clone**. Nếu có, dùng để xem screenshot, review và bằng chứng thực nghiệm; khi chia sẻ phải đính kèm riêng. README này không phụ thuộc vào những file đó.
+Đọc [Tutorial.md](Tutorial.md) để thao tác từng bước và [Project_Preview.md](Project_Preview.md) để xem kiến trúc, hợp đồng metric, gợi ý tham số, kết quả kiểm thử và bảy ảnh preview. `Preview.md` đã được gộp vào `Project_Preview.md` và xóa để tránh hai tài liệu trùng vai trò. Các ảnh trong `output/` được sinh cục bộ và Git ignore; chạy `tools/generate_previews.py` để tạo lại.

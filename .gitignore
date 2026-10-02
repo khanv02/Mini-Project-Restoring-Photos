@@ -7,6 +7,6 @@ dataset/generated/
 output/
 **/__pycache__/
 AGENTS.md
-Preview.md
-Project_Preview.md
 Test_Report.md
+Project_Preview.md
+tools/generate_previews.py
