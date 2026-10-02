@@ -37,15 +37,15 @@ Bộ dữ liệu dùng trong thực nghiệm hiện có 100 bộ clean–corrupt
 
 ## Công nghệ
 
-| Công nghệ | Yêu cầu khai báo | Vai trò trong project |
-| --- | --- | --- |
-| Python | ≥ 3.14 | Ngôn ngữ; `.python-version` chọn 3.14 |
-| NumPy | ≥ 1.26.0 | Mảng pixel, tính toán số và tạo nhiễu |
-| OpenCV | `opencv-python ≥ 4.8.0` | Đọc/lưu ảnh, Gaussian, Inpainting, morphology và tăng nét |
-| PySide6 / Qt | ≥ 6.6.0 | GUI, thanh kéo, hiển thị ảnh và worker nền |
-| scikit-image | ≥ 0.22.0 | PSNR và SSIM |
+| Công nghệ     | Yêu cầu khai báo            | Vai trò trong project                                               |
+| ------------- | --------------------------- | ------------------------------------------------------------------- |
+| Python        | ≥ 3.14                      | Ngôn ngữ; `.python-version` chọn 3.14                               |
+| NumPy         | ≥ 1.26.0                    | Mảng pixel, tính toán số và tạo nhiễu                               |
+| OpenCV        | `opencv-python ≥ 4.8.0`     | Đọc/lưu ảnh, Gaussian, Inpainting, morphology và tăng nét           |
+| PySide6 / Qt  | ≥ 6.6.0                     | GUI, thanh kéo, hiển thị ảnh và worker nền                          |
+| scikit-image  | ≥ 0.22.0                    | PSNR và SSIM                                                        |
 | uv / uv_build | Backend ≥ 0.12.10, < 0.13.0 | Đồng bộ môi trường/dependencies; build wheel và source distribution |
-| unittest | Thư viện chuẩn Python | Kiểm thử core và GUI; không cần pytest |
+| unittest      | Thư viện chuẩn Python       | Kiểm thử core và GUI; không cần pytest                              |
 
 `pyproject.toml` khai báo dependencies, `uv.lock` ghi phiên bản đã resolve. Matplotlib (≥ 3.8.0) và Pillow (≥ 10.0.0) cũng được khai báo, nhưng mã nguồn ứng dụng hiện không dùng trực tiếp hai thư viện này.
 
@@ -101,7 +101,6 @@ Project-1/
 ├── .gitignore
 ├── README.md                    # Điểm vào repository
 ├── Tutorial.md                   # Hướng dẫn thao tác
-└── Project_Preview.md            # Review kỹ thuật và visual preview
 ```
 
 Các thư mục dữ liệu sinh và output có thể chưa tồn tại ở bản clone mới. Các file `__init__.py` của subpackage được lược bớt trong sơ đồ.
@@ -224,29 +223,29 @@ Mặc định danh sách chỉ hiện tên và trạng thái để ưu tiên ả
 
 ## Thuật toán và thông số
 
-| Phương pháp | Cách xử lý | Cần mask |
-| --- | --- | --- |
-| Gaussian | `cv2.GaussianBlur`, giảm nhiễu toàn ảnh nhưng có thể làm mờ chi tiết | Không |
-| Inpainting | `cv2.inpaint` với Telea hoặc Navier–Stokes | Có |
-| Combined | Inpainting trước, Gaussian sau | Có |
+| Phương pháp | Cách xử lý                                                           | Cần mask |
+| ----------- | -------------------------------------------------------------------- | -------- |
+| Gaussian    | `cv2.GaussianBlur`, giảm nhiễu toàn ảnh nhưng có thể làm mờ chi tiết | Không    |
+| Inpainting  | `cv2.inpaint` với Telea hoặc Navier–Stokes                           | Có       |
+| Combined    | Inpainting trước, Gaussian sau                                       | Có       |
 
 Tăng nét dùng Unsharp Mask: `Y + amount × (Y − GaussianBlur(Y, sigma))`. Ảnh màu xử lý kênh độ sáng Y trong YCrCb; ảnh xám xử lý trực tiếp. Kết quả được làm tròn/giới hạn về `uint8`. Bước này chạy đúng một lần **sau** phương pháp phục hồi.
 
 Detector dùng grayscale → white Top-hat → ngưỡng sáng/phản hồi → lọc thành phần liên thông mảnh → nới rộng mask nếu được chọn.
 
-| Thông số GUI | Khoảng; bước | Mặc định |
-| --- | --- | --- |
-| Gaussian kernel | 3–31; chỉ số lẻ | 5 |
-| Gaussian sigma | 0,1–10; 0,1 | 1,2 |
-| Bán kính Inpainting | 1–20; 1 | 3 |
-| Phương pháp Inpainting | Telea / Navier–Stokes | Telea |
-| Tăng nét | Bật / tắt | Tắt |
-| Mức tăng nét | 0–2; 0,05 | 0,5 |
-| Sigma tăng nét | 0,3–3; 0,1 | 1 |
-| Mask: ngưỡng sáng | 180–250; 1 | 220 |
-| Mask: ngưỡng Top-hat | 5–100; 1 | 35 |
-| Mask: kernel ellipse | 3–31; chỉ số lẻ | 9 |
-| Mask: nới rộng | 0–3 pixel; 1 | 0 |
+| Thông số GUI           | Khoảng; bước          | Mặc định |
+| ---------------------- | --------------------- | -------- |
+| Gaussian kernel        | 3–31; chỉ số lẻ       | 5        |
+| Gaussian sigma         | 0,1–10; 0,1           | 1,2      |
+| Bán kính Inpainting    | 1–20; 1               | 3        |
+| Phương pháp Inpainting | Telea / Navier–Stokes | Telea    |
+| Tăng nét               | Bật / tắt             | Tắt      |
+| Mức tăng nét           | 0–2; 0,05             | 0,5      |
+| Sigma tăng nét         | 0,3–3; 0,1            | 1        |
+| Mask: ngưỡng sáng      | 180–250; 1            | 220      |
+| Mask: ngưỡng Top-hat   | 5–100; 1              | 35       |
+| Mask: kernel ellipse   | 3–31; chỉ số lẻ       | 9        |
+| Mask: nới rộng         | 0–3 pixel; 1          | 0        |
 
 Các khoảng trên là giới hạn của GUI; không mặc định mọi tham số API có cùng giới hạn. Thuật toán, mặc định và validation thực tế nằm trong `algorithms/` và `settings.py`.
 
@@ -325,18 +324,18 @@ print(result["metrics"])  # {"PSNR": ..., "SSIM": ...}
 
 ### Lỗi thường gặp
 
-| Tình huống | Cách kiểm tra |
-| --- | --- |
-| Không nhận lệnh `uv` | Cài uv và bảo đảm lệnh có trong PATH |
-| Sai phiên bản Python / thiếu dependency | Dùng Python 3.14+, chạy `uv sync --locked` rồi chạy qua `uv run` |
-| Demo thiếu ảnh hỏng/mask | Tạo dataset mới và truyền đúng `--dataset-dir` |
-| Generator báo đích đã tồn tại | Chọn tên đích mới hoặc bỏ `--output`; không ghi đè dataset |
-| Inpainting/Combined thiếu mask | Nạp hoặc xác nhận mask; Batch cần thư mục mask tương ứng |
-| Không có PSNR/SSIM | Kiểm tra reference, tên file, kích thước và số kênh; xem cảnh báo metric; chờ exact preview settle |
-| Không mở được cửa sổ GUI | Kiểm tra môi trường desktop và bỏ biến `QT_QPA_PLATFORM=offscreen` nếu đang đặt |
+| Tình huống                              | Cách kiểm tra                                                                                      |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Không nhận lệnh `uv`                    | Cài uv và bảo đảm lệnh có trong PATH                                                               |
+| Sai phiên bản Python / thiếu dependency | Dùng Python 3.14+, chạy `uv sync --locked` rồi chạy qua `uv run`                                   |
+| Demo thiếu ảnh hỏng/mask                | Tạo dataset mới và truyền đúng `--dataset-dir`                                                     |
+| Generator báo đích đã tồn tại           | Chọn tên đích mới hoặc bỏ `--output`; không ghi đè dataset                                         |
+| Inpainting/Combined thiếu mask          | Nạp hoặc xác nhận mask; Batch cần thư mục mask tương ứng                                           |
+| Không có PSNR/SSIM                      | Kiểm tra reference, tên file, kích thước và số kênh; xem cảnh báo metric; chờ exact preview settle |
+| Không mở được cửa sổ GUI                | Kiểm tra môi trường desktop và bỏ biến `QT_QPA_PLATFORM=offscreen` nếu đang đặt                    |
 
 ### Giới hạn và tài liệu bổ sung
 
 Không xử lý video, không có AI/super-resolution hay cọ sửa mask; Batch không tự phát hiện mask. Reference cùng kích thước vẫn có thể sai nội dung; phần mềm không tự căn chỉnh hoặc xác minh cặp ảnh. Chưa kiểm chứng cài sạch trên máy khác, hệ điều hành khác hoặc bản executable.
 
-Đọc [Tutorial.md](Tutorial.md) để thao tác từng bước và [Project_Preview.md](Project_Preview.md) để xem kiến trúc, hợp đồng metric, gợi ý tham số, kết quả kiểm thử và bảy ảnh preview. `Preview.md` đã được gộp vào `Project_Preview.md` và xóa để tránh hai tài liệu trùng vai trò. Các ảnh trong `output/` được sinh cục bộ và Git ignore; chạy `tools/generate_previews.py` để tạo lại.
+Đọc [Tutorial.md](Tutorial.md) để thao tác từng bước.
