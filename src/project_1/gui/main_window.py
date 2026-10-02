@@ -2,7 +2,8 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import QSignalBlocker, Qt
+import cv2
+from PySide6.QtCore import QSignalBlocker, QTimer, Qt
 from PySide6.QtGui import QAction, QActionGroup, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView, QFileDialog, QGridLayout, QHBoxLayout, QHeaderView,
@@ -18,6 +19,7 @@ from project_1.gui.theme import apply_workspace_theme
 from project_1.gui.widgets import AlgorithmControls, ImagePanel, LinkedImageViews, configure_combo_contrast
 from project_1.gui.mask_dialog import MaskDialog
 from project_1.algorithms.scratch_mask import validate_binary_mask
+from project_1.metrics.advisor import ParameterAdvisor
 from project_1.settings import ALGORITHMS
 from project_1.utils.image_io import list_images, read_image, write_image
 from project_1.utils.reports import report_row, write_csv
@@ -42,14 +44,42 @@ class MainWindow(QMainWindow):
         self.input_path = ""
         self.single_result = None
         self.comparison_results = {}
+        self._exact_comparison_results = {}
         self.batch_rows = []
         self.thread = None
+        self.preview_thread = None
+        self._preview_revision = 0
+        self._preview_pending = False
+        self._preview_pending_fast = False
+        self._preview_interactive = False
+        self._preview_drag_changed = False
+        self._preview_approximate = False
+        self._preview_mode = None
+        self._preview_max_side = 160
+        self._advisor_mode = None
         self.mask_dialog = None
         self.mask_source = ""
         self.mask_parameters = None
+        self._preview_timer = QTimer(self)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.setInterval(80)
+        self._preview_timer.timeout.connect(self._start_live_preview)
+        self.parameter_advisor = ParameterAdvisor(self.pipeline)
         self._lockable = []
         self._init_ui()
+        self._connect_live_preview()
         apply_workspace_theme(self)
+
+    def _connect_live_preview(self):
+        """Refresh the current Single/Compare result after slider dragging pauses."""
+        for control in (self.controls.kernel, self.controls.sigma, self.controls.radius,
+                        self.controls.sharpen_amount, self.controls.sharpen_sigma):
+            control.valueChanged.connect(self._schedule_live_preview)
+            control.dragStarted.connect(self._begin_interactive_preview)
+            control.dragFinished.connect(self._end_interactive_preview)
+        for control in (self.controls.algorithm, self.controls.method):
+            control.currentIndexChanged.connect(self._schedule_live_preview)
+        self.controls.sharpen_enabled.toggled.connect(self._schedule_live_preview)
 
     def _button(self, text, handler, layout, *, lock=True, primary=False):
         button = QPushButton(text)
@@ -136,10 +166,32 @@ class MainWindow(QMainWindow):
         self._lockable.append(self.controls)
         hint = QLabel("Tham chiếu chỉ cần khi đo PSNR/SSIM.\n"
                       "Inpainting / Combined cần mask.\n"
-                      "Chỉnh thông số rồi bấm xử lý để xem kết quả.")
+                      "Bấm xử lý lần đầu; sau đó kéo thanh để xem ảnh và PSNR/SSIM cập nhật trực tiếp.")
         hint.setObjectName("muted")
         hint.setWordWrap(True)
         left.addWidget(hint)
+        advisor_group = QGroupBox("03  ·  Gợi ý tham số")
+        advisor_layout = QVBoxLayout(advisor_group)
+        self.advisor_button = QLabel('<a href="advisor">Phân tích & gợi ý tham số</a>')
+        self.advisor_button.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        self.advisor_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.advisor_button.linkActivated.connect(lambda *_: self._run_advisor())
+        self.advisor_button.setToolTip(
+            "Thử các giá trị lân cận khi có ảnh tham chiếu; nếu không có, đưa gợi ý tham khảo.")
+        self._lockable.append(self.advisor_button)
+        advisor_layout.addWidget(self.advisor_button)
+        advisor_hint = QLabel("Chạy phục hồi trước để hệ thống có kết quả làm mốc.")
+        advisor_hint.setObjectName("muted")
+        advisor_hint.setWordWrap(True)
+        advisor_layout.addWidget(advisor_hint)
+        self.advisor_button.setToolTip(
+            "Thử các giá trị lân cận khi có ảnh tham chiếu; nếu không có, đưa gợi ý tham khảo.")
+        self.advisor_status = QLabel(
+            "Chạy phục hồi trước để hệ thống có kết quả làm mốc.")
+        self.advisor_status.setObjectName("muted")
+        self.advisor_status.setWordWrap(True)
+        advisor_layout.addWidget(self.advisor_status)
+        left.addWidget(advisor_group)
         left.addStretch()
         self.tabs = QTabWidget()
         self.tabs.addTab(self._single_tab(), "Khôi phục đơn")
@@ -453,6 +505,7 @@ class MainWindow(QMainWindow):
             self.table_batch.setColumnHidden(column, compact)
 
     def _tab_changed(self, *_):
+        self._cancel_live_preview(restore=True)
         self.controls._update_visibility()
         if self.tabs.currentIndex() == 1:
             for control in (self.controls.kernel, self.controls.sigma,
@@ -468,21 +521,28 @@ class MainWindow(QMainWindow):
             action.setEnabled(allowed and loaded)
         self.save_mask_action.setEnabled(allowed and self.mask_img is not None)
         self.clear_references_action.setEnabled(allowed and (self.clean_img is not None or self.mask_img is not None))
-        self.run_button.setEnabled(not self._busy() and loaded and (not self.controls.needs_mask or self.mask_img is not None))
+        live_preview_running = self.preview_thread is not None
+        self.run_button.setEnabled(not self._busy() and not live_preview_running and loaded and
+                                   (not self.controls.needs_mask or self.mask_img is not None))
         self.run_button.setToolTip("Phục hồi bằng cấu hình bên trái." if self.run_button.isEnabled()
                                    else "Nạp ảnh hỏng và mask nếu phương pháp yêu cầu; chờ xử lý hiện tại kết thúc.")
-        self.compare_button.setEnabled(not self._busy() and loaded)
+        self.compare_button.setEnabled(not self._busy() and not live_preview_running and loaded)
+        self.advisor_button.setEnabled(
+            not self._busy() and not live_preview_running and not self._preview_pending and
+            not self._preview_approximate and self._live_preview_mode() is not None)
         self._update_result_actions()
 
     def _update_result_actions(self):
         available = not self._busy()
-        self.save_single_action.setEnabled(available and self.restored_img is not None)
+        exact_ready = (not self._preview_approximate and not self._preview_pending and
+                       self.preview_thread is None)
+        self.save_single_action.setEnabled(available and exact_ready and self.restored_img is not None)
         self.single_export_button.setEnabled(self.save_single_action.isEnabled())
         index = self.table_comp.currentRow()
         results = list(self.comparison_results.values())
         selected_image = 0 <= index < len(results) and results[index].get("image") is not None
-        self.save_comparison_action.setEnabled(available and selected_image)
-        self.export_csv_action.setEnabled(available and bool(results))
+        self.save_comparison_action.setEnabled(available and exact_ready and selected_image)
+        self.export_csv_action.setEnabled(available and exact_ready and bool(results))
         self.compare_export_button.setEnabled(self.export_csv_action.isEnabled())
 
     def _select_directory(self, entry, title):
@@ -491,10 +551,15 @@ class MainWindow(QMainWindow):
             entry.setText(directory)
 
     def _clear_results(self):
+        self._cancel_live_preview()
         self.restored_img = self.single_result = None
         self.comparison_results = {}
+        self._exact_comparison_results = {}
+        self._preview_approximate = False
+        self._preview_mode = None
         self.after_panel.set_image(None)
         self.lbl_metrics.setText("Không có kết quả")
+        self.advisor_status.setText("Chạy phục hồi trước để hệ thống có kết quả làm mốc.")
         self.table_comp.setRowCount(0)
         for panel in self.compare_panels.values():
             panel.set_image(None)
@@ -632,6 +697,178 @@ class MainWindow(QMainWindow):
     def _busy(self):
         return self.thread is not None or self.mask_dialog is not None
 
+    def _cancel_live_preview(self, *, restore=False):
+        self._preview_revision += 1
+        self._preview_pending = False
+        self._preview_pending_fast = False
+        self._preview_interactive = False
+        self._preview_drag_changed = False
+        self._preview_timer.stop()
+        if self.preview_thread is not None and self.preview_thread.isRunning():
+            self.preview_thread.stop()
+        if restore:
+            self._restore_exact_preview()
+
+    def _begin_interactive_preview(self):
+        if self._live_preview_mode() is not None:
+            self._preview_interactive = True
+            self._preview_drag_changed = False
+
+    def _end_interactive_preview(self):
+        if not self._preview_interactive:
+            return
+        self._preview_interactive = False
+        if self._preview_drag_changed:
+            self._schedule_live_preview(interactive=False)
+        self._preview_drag_changed = False
+
+    def _schedule_live_preview(self, *_, interactive=None):
+        """Coalesce rapid slider changes into one background restoration."""
+        mode = self._live_preview_mode()
+        if (self._busy() or mode is None or self.corrupted_img is None or
+                (self.controls.needs_mask and self.mask_img is None)):
+            return
+        interactive = self._preview_interactive if interactive is None else interactive
+        if interactive:
+            self._preview_drag_changed = True
+        self._preview_revision += 1
+        self._preview_pending = True
+        self._preview_pending_fast = bool(interactive)
+        self._preview_timer.start(40 if interactive else 80)
+        self._update_result_actions()
+
+    def _live_preview_mode(self):
+        if self.tabs.currentIndex() == 0 and self.restored_img is not None:
+            return "single"
+        if self.tabs.currentIndex() == 1 and self.comparison_results:
+            return "compare"
+        return None
+
+    def _start_live_preview(self):
+        mode = self._live_preview_mode()
+        if (not self._preview_pending or self._busy() or mode is None or
+                self.corrupted_img is None):
+            return
+        if self.preview_thread is not None:
+            return
+        if self.controls.needs_mask and self.mask_img is None:
+            self._preview_pending = False
+            return
+
+        request_kind = "fast" if self._preview_pending_fast else "exact"
+        self._preview_pending = False
+        self._preview_pending_fast = False
+        revision = self._preview_revision
+        key, parameters = self.controls.algorithm_key, self.controls.parameters()
+        image, clean, mask = self.corrupted_img, self.clean_img, self.mask_img
+        baseline = self.single_result.get("baseline") if mode == "single" and self.single_result else None
+        if mode == "single":
+            if request_kind == "fast":
+                task = lambda: self._run_fast_single(key, image, clean, mask, parameters)
+            else:
+                task = lambda: self.pipeline.restore_result(
+                    key, image, clean, mask=mask, baseline=baseline, **parameters)
+        else:
+            if request_kind == "fast":
+                task = lambda: self._run_fast_compare(key, image, clean, mask, parameters)
+            else:
+                task = lambda: self.pipeline.compare_all(clean, image, mask, **parameters)
+        message = "Đang cập nhật ảnh và PSNR/SSIM…"
+        if mode == "single":
+            self.lbl_metrics.setText(message)
+        else:
+            self.statusBar().showMessage(message)
+        worker = TaskWorkerThread(task, self)
+        self.preview_thread = worker
+        worker.completed.connect(lambda data, token=revision, kind=mode, speed=request_kind:
+                                 self._live_preview_completed(token, data, kind, speed))
+        worker.failed.connect(lambda error, token=revision, kind=mode:
+                              self._live_preview_failed(token, error, kind))
+        worker.finished.connect(lambda task=worker: self._live_preview_finished(task))
+        self._update_mask_actions()
+        worker.start()
+
+    def _preview_image(self, image, *, mask=False):
+        if image is None:
+            return None
+        height, width = image.shape[:2]
+        scale = min(1.0, self._preview_max_side / max(height, width))
+        if scale == 1.0:
+            return image.copy()
+        size = (max(3, round(width * scale)), max(3, round(height * scale)))
+        interpolation = cv2.INTER_NEAREST if mask else cv2.INTER_AREA
+        return cv2.resize(image, size, interpolation=interpolation)
+
+    @staticmethod
+    def _restore_preview_size(image, shape):
+        if image is None or image.shape[:2] == shape[:2]:
+            return image
+        return cv2.resize(image, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
+
+    def _run_fast_single(self, key, image, clean, mask, parameters):
+        small_image = self._preview_image(image)
+        small_clean = self._preview_image(clean) if clean is not None else None
+        small_mask = self._preview_image(mask, mask=True) if mask is not None else None
+        baseline = self.pipeline.evaluate(small_clean, small_image) if small_clean is not None else None
+        data = self.pipeline.restore_result(
+            key, small_image, small_clean, mask=small_mask, baseline=baseline, **parameters)
+        data["image"] = self._restore_preview_size(data["image"], image.shape)
+        data["approximate"] = True
+        return data
+
+    def _run_fast_compare(self, _key, image, clean, mask, parameters):
+        small_image = self._preview_image(image)
+        small_clean = self._preview_image(clean) if clean is not None else None
+        small_mask = self._preview_image(mask, mask=True) if mask is not None else None
+        results = self.pipeline.compare_all(small_clean, small_image, small_mask, **parameters)
+        for data in results.values():
+            data["image"] = self._restore_preview_size(data.get("image"), image.shape)
+            data["approximate"] = True
+        return results
+
+    def _live_preview_completed(self, revision, data, mode, speed):
+        if revision != self._preview_revision:
+            return
+        self._preview_mode = mode
+        self._preview_approximate = speed == "fast"
+        if mode == "compare":
+            self._comparison_completed(data, live=True, approximate=self._preview_approximate)
+            return
+        if speed == "exact":
+            self.single_result = data
+            self.restored_img = data["image"]
+        self.after_panel.set_image(data["image"])
+        self.single_view_link.sync_from(self.before_panel.view)
+        self._display_single_result(data, live=True, approximate=self._preview_approximate)
+        self._update_result_actions()
+
+    def _live_preview_failed(self, revision, message, mode):
+        if revision == self._preview_revision:
+            text = "Xem trước thời gian thực thất bại: " + message
+            if mode == "single":
+                self.lbl_metrics.setText(text)
+            else:
+                self.statusBar().showMessage(text)
+
+    def _live_preview_finished(self, worker):
+        if self.preview_thread is worker:
+            self.preview_thread = None
+        worker.deleteLater()
+        self._update_mask_actions()
+        if self._preview_pending and not self._busy():
+            self._preview_timer.start(0)
+
+    def _restore_exact_preview(self):
+        if not self._preview_approximate:
+            return
+        if self._preview_mode == "single" and self.single_result is not None:
+            self.after_panel.set_image(self.single_result["image"])
+            self._display_single_result(self.single_result)
+        elif self._preview_mode == "compare" and self._exact_comparison_results:
+            self._comparison_completed(self._exact_comparison_results)
+        self._preview_approximate = False
+        self._preview_mode = None
+
     def _set_busy(self, busy):
         for control in self._lockable:
             control.setEnabled(not busy)
@@ -663,8 +900,64 @@ class MainWindow(QMainWindow):
         if worker is not None:
             worker.deleteLater()
 
+    def _run_advisor(self):
+        if self._busy() or self.preview_thread is not None or self._preview_pending:
+            return
+        mode = self._live_preview_mode()
+        if mode is None:
+            return
+        key, parameters = self.controls.algorithm_key, self.controls.parameters()
+        image, clean, mask = self.corrupted_img, self.clean_img, self.mask_img
+        self._advisor_mode = mode
+        self.advisor_status.setText("Đang phân tích các giá trị lân cận…")
+        if mode == "single":
+            task = lambda: self.parameter_advisor.analyze(
+                key, image, clean, mask, parameters, self.single_result)
+        else:
+            task = lambda: self.parameter_advisor.analyze_compare(
+                image, clean, mask, parameters, self.comparison_results)
+        self._start_worker(TaskWorkerThread(task, self), self._advisor_completed)
+
+    @staticmethod
+    def _format_advice(item):
+        if item.get("delta") is not None:
+            delta = item["delta"]
+            value = item.get("value")
+            return (f"• {item['label']}: thử {item['direction']} → {value}; "
+                    f"PSNR {delta['PSNR']:+.2f} dB, SSIM {delta['SSIM']:+.4f}")
+        return (f"• {item['label']}: nên {item['direction']}; "
+                f"{item['reason']} (tin cậy {item.get('confidence', 'thấp')})")
+
+    def _format_advisor_result(self, result, label=""):
+        lines = [label] if label else []
+        if result.get("error"):
+            lines.append("  " + result["error"])
+            return lines
+        suggestions = result.get("suggestions", [])
+        if suggestions:
+            lines.extend("  " + self._format_advice(item) for item in suggestions)
+        else:
+            lines.append("  Chưa tìm thấy thay đổi lân cận cùng cải thiện PSNR và SSIM.")
+        for item in result.get("tradeoffs", []):
+            delta = item["delta"]
+            lines.append(
+                f"  • Đánh đổi {item['label']} ({item['direction']}): "
+                f"PSNR {delta['PSNR']:+.2f} dB, SSIM {delta['SSIM']:+.4f}.")
+        return lines
+
+    def _advisor_completed(self, result):
+        if self._advisor_mode == "single":
+            lines = self._format_advisor_result(result)
+        else:
+            lines = []
+            for label, data in result.items():
+                lines.extend(self._format_advisor_result(data, label))
+        self.advisor_status.setText("\n".join(lines))
+
     def _run_single_restoration(self):
         if self._busy():
+            return
+        if self.preview_thread is not None:
             return
         if self.corrupted_img is None:
             self._error("Vui lòng mở ảnh hỏng trước.")
@@ -672,8 +965,11 @@ class MainWindow(QMainWindow):
         if self.controls.needs_mask and self.mask_img is None:
             self._error("Phương pháp này cần mask.")
             return
+        self._cancel_live_preview()
         key, parameters = self.controls.algorithm_key, self.controls.parameters()
         image, clean, mask = self.corrupted_img, self.clean_img, self.mask_img
+        self._preview_approximate = False
+        self._preview_mode = None
         self.restored_img = self.single_result = None
         self.after_panel.set_image(None)
         self.lbl_metrics.setText("Đang khôi phục…")
@@ -682,19 +978,31 @@ class MainWindow(QMainWindow):
         self._start_worker(worker, self._single_completed)
 
     def _single_completed(self, data):
+        self._preview_approximate = False
+        self._preview_mode = "single"
         self.single_result = data
         self.restored_img = data["image"]
         self.after_panel.set_image(data["image"])
         self.single_view_link.sync_from(self.before_panel.view)
+        self._display_single_result(data)
+
+    def _display_single_result(self, data, *, live=False, approximate=False):
         before, after = data["baseline"], data["metrics"]
         if after:
+            prefix = ""
+            if approximate:
+                prefix = "Preview nhanh · PSNR/SSIM ước lượng · "
+            elif live:
+                prefix = "Xem trước thời gian thực · "
             self.lbl_metrics.setText(
-                f"PSNR: {number(before['PSNR'], 2)} → {number(after['PSNR'], 2)} dB "
+                f"{prefix}PSNR: {number(before['PSNR'], 2)} → {number(after['PSNR'], 2)} dB "
                 f"(Δ {number(data['delta']['PSNR'], 2)})   |   "
                 f"SSIM: {number(before['SSIM'])} → {number(after['SSIM'])} "
                 f"(Δ {number(data['delta']['SSIM'])})   |   {data['time']:.4f} s")
         else:
-            self.lbl_metrics.setText(data["metrics_error"] or "Không có ảnh tham chiếu; đánh giá trực quan.")
+            message = data["metrics_error"] or "Không có ảnh tham chiếu; đánh giá trực quan."
+            prefix = "Preview nhanh · " if approximate else ("Xem trước thời gian thực · " if live else "")
+            self.lbl_metrics.setText(prefix + message)
 
     def _save_image(self, image, name="restored.png"):
         if image is None:
@@ -715,9 +1023,14 @@ class MainWindow(QMainWindow):
     def _run_comparison(self):
         if self._busy():
             return
+        if self.preview_thread is not None:
+            return
         if self.corrupted_img is None:
             self._error("Vui lòng mở ảnh hỏng trước.")
             return
+        self._cancel_live_preview()
+        self._preview_approximate = False
+        self._preview_mode = None
         self.comparison_results = {}
         self.table_comp.setRowCount(0)
         for panel in self.compare_panels.values():
@@ -743,8 +1056,11 @@ class MainWindow(QMainWindow):
             item.setToolTip("\n".join(f"{title}: {text}" for title, text in zip(TABLE_HEADERS, values)))
             table.setItem(index, column, item)
 
-    def _comparison_completed(self, results):
+    def _comparison_completed(self, results, *, live=False, approximate=False):
         self.comparison_results = results
+        if not approximate:
+            self._exact_comparison_results = results
+            self._preview_mode = "compare"
         for label, data in results.items():
             self.compare_panels[label].set_image(data.get("image"), data.get("error", ""))
             row = report_row(Path(self.input_path).name, label, data, self.input_path)
@@ -752,6 +1068,12 @@ class MainWindow(QMainWindow):
         if self.table_comp.rowCount():
             self.table_comp.selectRow(self.compare_right_selector.currentIndex())
         self._show_comparison_pair()
+        if live:
+            message = ("Preview nhanh · bảng PSNR/SSIM ước lượng đã cập nhật"
+                       if approximate else
+                       "Xem trước thời gian thực · bảng PSNR/SSIM đã cập nhật")
+            self.statusBar().showMessage(message)
+        self._update_result_actions()
 
     def _save_comparison(self):
         index = self.table_comp.currentRow()
@@ -862,7 +1184,9 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         worker = self.thread
-        if worker is not None and worker.isRunning():
+        preview_worker = self.preview_thread
+        if ((worker is not None and worker.isRunning()) or
+                (preview_worker is not None and preview_worker.isRunning())):
             answer = QMessageBox.question(
                 self, "Đang xử lý", "Dừng tác vụ và đóng ứng dụng?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -870,6 +1194,11 @@ class MainWindow(QMainWindow):
             if answer != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
-            worker.stop()
-            worker.wait()
+            self._cancel_live_preview()
+            if worker is not None and worker.isRunning():
+                worker.stop()
+                worker.wait()
+            if preview_worker is not None and preview_worker.isRunning():
+                preview_worker.stop()
+                preview_worker.wait()
         event.accept()

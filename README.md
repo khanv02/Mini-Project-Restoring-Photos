@@ -168,7 +168,9 @@ Quy ước đầu vào:
 
 Sidebar chỉ giữ hai thao tác đầu vào; menu **Tùy chọn ảnh** còn có lưu mask, bỏ tham chiếu/mask và nạp bộ ảnh mẫu. Menu **Xuất kết quả** gom lưu ảnh phương pháp đã chọn và xuất CSV. Các thao tác chỉ được bật khi có đầu vào/kết quả phù hợp; khi đang xử lý, các thao tác thay dữ liệu bị khóa. Cấu hình tăng nét chỉ hiện khi bật tùy chọn này.
 
-Thanh kéo và ô nhập số luôn đồng bộ. Nhập số rồi Enter/chuyển focus để xác nhận; kernel chẵn được đưa lên số lẻ kế tiếp. **Chỉnh thông số không tự chạy xử lý.** Compare dùng cùng cấu hình cho ba phương pháp; thiếu mask thì bỏ qua Inpainting/Combined. Chọn dòng kết quả để lưu ảnh hoặc xuất CSV.
+Thanh kéo và ô nhập số luôn đồng bộ. Nhập số rồi Enter/chuyển focus để xác nhận; kernel chẵn được đưa lên số lẻ kế tiếp. Sau lần chạy đầu, kéo thanh trong Single/Compare sẽ hiện preview nhanh với metric ước lượng; khi dừng kéo, ứng dụng tự chạy lại ảnh đầy đủ và cập nhật PSNR/SSIM chính xác. Chờ kết quả đầy đủ trước khi lưu hoặc xuất CSV. Compare dùng cùng cấu hình cho ba phương pháp; thiếu mask thì bỏ qua Inpainting/Combined. Chọn dòng kết quả để lưu ảnh hoặc xuất CSV.
+
+Nút **Phân tích & gợi ý** thử các giá trị lân cận khi có ảnh sạch tham chiếu và chỉ đề xuất khi PSNR/SSIM cùng cải thiện. Nếu hai metric trái chiều, giao diện báo rõ đánh đổi. Không có ảnh tham chiếu thì gợi ý dựa trên nhiễu, độ sắc cạnh và mask, với mức tin cậy thấp; hệ thống không tự đổi tham số.
 
 Đổi ảnh hỏng xóa reference, mask và kết quả cũ. Không có reference vẫn phục hồi được, nhưng chỉ đánh giá trực quan.
 

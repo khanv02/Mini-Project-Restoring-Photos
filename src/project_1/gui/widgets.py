@@ -323,6 +323,8 @@ class SliderControl(QWidget):
     """Discrete slider plus precise numeric entry; no increment/decrement buttons."""
 
     valueChanged = Signal(object)
+    dragStarted = Signal()
+    dragFinished = Signal()
 
     def __init__(self, minimum, maximum, step, default, *, decimals=0):
         super().__init__()
@@ -345,6 +347,8 @@ class SliderControl(QWidget):
         layout.addWidget(self.slider, 1)
         layout.addWidget(self.editor)
         self.slider.valueChanged.connect(self._slider_changed)
+        self.slider.sliderPressed.connect(self.dragStarted)
+        self.slider.sliderReleased.connect(self.dragFinished)
         self.editor.valueChanged.connect(self.setValue)
         self.setValue(default)
 

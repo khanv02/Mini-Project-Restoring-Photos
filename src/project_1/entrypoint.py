@@ -53,7 +53,8 @@ class RestorationPipeline:
                 "sharpen_sigma": kwargs.get("sharpen_sigma", DEFAULT_SHARPEN_SIGMA)}
 
     def restore_result(self, algorithm_name: str, image: np.ndarray,
-                       clean_img: np.ndarray | None = None, mask=None, **kwargs) -> dict:
+                       clean_img: np.ndarray | None = None, mask=None,
+                       baseline: dict[str, float] | None = None, **kwargs) -> dict:
         parameters = self.parameters(**kwargs)
         start = perf_counter()
         restored = self.run_single(algorithm_name, image, mask=mask, **parameters)
@@ -62,7 +63,7 @@ class RestorationPipeline:
                   "baseline": None, "metrics": None, "delta": None, "metrics_error": ""}
         if clean_img is not None:
             try:
-                baseline = self.evaluate(clean_img, image)
+                baseline = baseline if baseline is not None else self.evaluate(clean_img, image)
                 metrics = self.evaluate(clean_img, restored)
             except ValueError as exc:
                 result["metrics_error"] = str(exc)
@@ -76,6 +77,13 @@ class RestorationPipeline:
     ) -> dict[str, Any]:
         """Compare eligible methods using the same parameters; time processing only."""
         results = {}
+        baseline = None
+        if clean_img is not None:
+            try:
+                baseline = self.evaluate(clean_img, corrupted_img)
+            except ValueError:
+                # Keep the existing per-result validation/error behavior.
+                baseline = None
         for spec in ALGORITHMS:
             if spec.needs_mask and mask is None:
                 results[spec.label] = {"image": None, "status": "skipped", "metrics": None,
@@ -84,7 +92,7 @@ class RestorationPipeline:
                 continue
             try:
                 results[spec.label] = self.restore_result(
-                    spec.key, corrupted_img, clean_img, mask=mask, **kwargs)
+                    spec.key, corrupted_img, clean_img, mask=mask, baseline=baseline, **kwargs)
             except (ValueError, RuntimeError) as exc:
                 results[spec.label] = {"image": None, "status": "failed", "metrics": None,
                                        "parameters": self.parameters(**kwargs), "error": str(exc)}
